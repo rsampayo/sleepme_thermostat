@@ -1,0 +1,10 @@
+{
+  "domain": "sleepme_thermostat",
+  "name": "SleepMe Thermostat",
+  "version": "1.0",
+  "documentation": "https://github.com/rsampayo/sleepme_thermostat",
+  "dependencies": [],
+  "codeowners": ["@rsampayo"],
+  "requirements": [],
+  "config_flow": true
+}

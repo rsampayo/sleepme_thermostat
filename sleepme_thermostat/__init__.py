@@ -1,0 +1,38 @@
+import logging
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from .sleepme import SleepMeClient
+from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the SleepMe Thermostat component."""
+    _LOGGER.debug("Starting async_setup for SleepMe Thermostat.")
+    hass.data.setdefault(DOMAIN, {})
+    return True
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up SleepMe Thermostat from a config entry."""
+    _LOGGER.debug("Starting async_setup_entry for SleepMe Thermostat.")
+
+    api_url = entry.data.get("api_url")
+    api_token = entry.data.get("api_token")
+    device_id = entry.data.get("device_id")
+
+    _LOGGER.debug(f"API URL: {api_url}")
+    _LOGGER.debug(f"API Token: {api_token}")
+    _LOGGER.debug(f"Device ID: {device_id}")
+
+    if not api_token or not device_id:
+        _LOGGER.error("API token or device ID is missing from configuration.")
+        return False
+
+    # Initialize the SleepMe client
+    hass.data[DOMAIN]["sleepme_controller"] = SleepMeClient(api_url, api_token, device_id)
+
+    # Forward the entry setup to the specific platforms
+    await hass.config_entries.async_forward_entry_setups(entry, ["climate", "binary_sensor"])
+
+    _LOGGER.info("SleepMe Thermostat component initialized successfully.")
+    return True
