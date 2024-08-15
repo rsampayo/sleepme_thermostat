@@ -12,6 +12,9 @@ RATE_LIMIT_INTERVAL = 60  # seconds in one minute
 last_request_times = []
 rate_limit_lock = asyncio.Lock()
 
+# API call counter
+api_call_count = 0
+
 def round_half_up(n):
     """Round a number to the nearest .0 or .5."""
     return round(n * 2) / 2
@@ -21,9 +24,11 @@ class SleepMeClient:
         self.api_url = api_url
         self.token = token
         self.device_id = device_id
+        _LOGGER.debug(f"[Device {self.device_id}] Initialized SleepMeClient with API URL: {self.api_url}")
 
     async def rate_limited_request(self, method: str, url: str, params=None, data=None, input_headers=None, retries=5):
         """Make an API request with global rate limiting and retry logic for 429 errors."""
+        global api_call_count
         async with rate_limit_lock:
             global last_request_times
             current_time = time.time()
@@ -39,8 +44,15 @@ class SleepMeClient:
                 last_request_times = [t for t in last_request_times if current_time - t < RATE_LIMIT_INTERVAL]
 
             last_request_times.append(current_time)
-
-            return await self.api_request(method, url, params, data, input_headers, retries)
+            api_call_count += 1
+            _LOGGER.debug(f"[Device {self.device_id}] Making {method.upper()} request to {url} with params: {params}, data: {data}, and headers: {input_headers}")
+            _LOGGER.info(f"[Device {self.device_id}] Total API calls made so far: {api_call_count}")
+            
+            start_time = time.time()
+            response = await self.api_request(method, url, params, data, input_headers, retries)
+            end_time = time.time()
+            _LOGGER.debug(f"[Device {self.device_id}] API request completed in {end_time - start_time:.2f} seconds with response: {response.status_code if isinstance(response, httpx.Response) else 'N/A'}")
+            return response
 
     async def api_request(self, method: str, url: str, params=None, data=None, input_headers=None, retries=5):
         """Make an API request with retry logic for handling 429 errors."""
@@ -48,14 +60,32 @@ class SleepMeClient:
         headers["Authorization"] = f"Bearer {self.token}"
 
         for attempt in range(retries):
-            async with httpx.AsyncClient() as client:
-                response = await client.request(method, url, headers=headers, json=data, params=params)
-                if response.status_code == 429:
-                    _LOGGER.warning(f"[Device {self.device_id}] 429 Too Many Requests. Attempt {attempt + 1} of {retries}. Retrying after delay...")
-                    await asyncio.sleep((2 ** attempt) * 10)  # Exponential backoff starting at 10 seconds
-                    continue
-                response.raise_for_status()
-                return response.json()
+            try:
+                async with httpx.AsyncClient() as client:
+                    _LOGGER.debug(f"[Device {self.device_id}] Attempt {attempt + 1} of {retries} for {method.upper()} request to {url}")
+                    response = await client.request(method, url, headers=headers, json=data, params=params)
+                    _LOGGER.debug(f"[Device {self.device_id}] Response received: {response.status_code}, Content: {response.text[:100]}...")
+
+                    if response.status_code == 429:
+                        backoff_time = (2 ** attempt) * 10
+                        _LOGGER.warning(f"[Device {self.device_id}] 429 Too Many Requests. Retrying after {backoff_time} seconds...")
+                        await asyncio.sleep(backoff_time)  # Exponential backoff starting at 10 seconds
+                        continue
+
+                    # Process the response and check if it returns JSON
+                    try:
+                        response_json = response.json()
+                        _LOGGER.debug(f"[Device {self.device_id}] API request successful: {response_json}")
+                        return response_json
+                    except ValueError:
+                        _LOGGER.error(f"[Device {self.device_id}] Failed to decode JSON response: {response.text}")
+                        return response.text  # Or handle non-JSON responses appropriately
+
+            except httpx.HTTPStatusError as e:
+                _LOGGER.error(f"[Device {self.device_id}] HTTP error: {str(e)}")
+            except httpx.RequestError as e:
+                _LOGGER.error(f"[Device {self.device_id}] Request error: {str(e)}")
+            await asyncio.sleep((2 ** attempt) * 10)  # Exponential backoff
 
         _LOGGER.error(f"[Device {self.device_id}] API request failed after {retries} attempts.")
         return {}
@@ -63,12 +93,16 @@ class SleepMeClient:
     async def get_claimed_devices(self):
         """Return a list of claimed devices for the given token."""
         url = f"{self.api_url}/devices"
+        _LOGGER.debug(f"[Device {self.device_id}] Fetching claimed devices from {url}")
         return await self.rate_limited_request("GET", url)
 
     async def get_device_status(self):
         """Retrieve the device status."""
         url = f"{self.api_url}/devices/{self.device_id}"
-        return await self.rate_limited_request("GET", url)
+        _LOGGER.debug(f"[Device {self.device_id}] Fetching device status from {url}")
+        response = await self.rate_limited_request("GET", url)
+        _LOGGER.debug(f"[Device {self.device_id}] Device status: {response}")
+        return response
 
     async def set_temp_level(self, temp_c: float):
         """Set the temperature level in Celsius and provide feedback."""
@@ -86,9 +120,7 @@ class SleepMeClient:
         else:
             _LOGGER.warning(f"[Device {self.device_id}] Temperature setting may have failed. Response: {response}")
             
-            # Explanation: The physical device may not respond fast enough, and the API might return stale data
-            # that has not been updated yet. To handle this, we wait for a few seconds before rechecking.
-            await asyncio.sleep(8)  # Wait for 6 seconds before re-checking the temperature setting
+            await asyncio.sleep(8)  # Wait for 8 seconds before re-checking the temperature setting
             
             # Re-check the temperature setting after the delay
             device_status = await self.get_device_status()
@@ -116,9 +148,7 @@ class SleepMeClient:
         else:
             _LOGGER.warning(f"[Device {self.device_id}] Device status may not have been set to {status}. Response: {response}")
             
-            # Explanation: Similar to the temperature setting, the device might not update its status
-            # immediately. We wait for a few seconds and recheck the status to ensure accuracy.
-            await asyncio.sleep(8)  # Wait for 6 seconds before re-checking the device status
+            await asyncio.sleep(8)  # Wait for 8 seconds before re-checking the device status
             
             # Re-check the device status after the delay
             device_status = await self.get_device_status()

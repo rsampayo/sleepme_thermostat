@@ -29,7 +29,7 @@ class WaterLevelLowSensor(BinarySensorEntity):
         self._thermostat = thermostat
         self._device_id = device_id
         self._attr_name = f"{name} Water Level Low"  # Use the friendly name for the entity name
-        self._attr_device_class = "moisture"
+        self._attr_device_class = "problem"
         self._attr_unique_id = f"{DOMAIN}_{device_id}_water_low"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
