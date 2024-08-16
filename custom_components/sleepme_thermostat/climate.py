@@ -19,13 +19,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     _LOGGER.debug(f"[Device {device_id}] Setting up SleepMeThermostat entity with name: {name}")
     sleepme_controller = SleepMeClient(API_URL, entry.data.get("api_token"), device_id)
-    thermostat = SleepMeThermostat(sleepme_controller, device_id, name)
+    thermostat = SleepMeThermostat(sleepme_controller, device_id, name, entry.data)
     
     hass.data[DOMAIN][device_id] = thermostat
     async_add_entities([thermostat])
 
 class SleepMeThermostat(ClimateEntity):
-    def __init__(self, controller, device_id, name):
+    def __init__(self, controller, device_id, name, device_info):
         self._controller = controller
         self._name = f"SleepMe {name}"
         self._device_id = device_id
@@ -36,13 +36,31 @@ class SleepMeThermostat(ClimateEntity):
         self._is_water_low = False
         self._skip_next_update = False  # Flag to control whether to skip the next update
         self._attr_unique_id = f"{DOMAIN}_{device_id}_thermostat"
+
+        # Store device info from the config entry
+        self._firmware_version = device_info.get("firmware_version")
+        self._mac_address = device_info.get("mac_address")
+        self._model = device_info.get("model")
+        self._serial_number = device_info.get("serial_number")
+
+        # Validate MAC address
+        if self._mac_address and len(self._mac_address) == 17 and self._mac_address.count(":") == 5:
+            connections = {("mac", self._mac_address)}
+        else:
+            _LOGGER.warning(f"Invalid or missing MAC address for device {device_id}. Skipping MAC address in device registry.")
+            connections = set()
+
+        # Set up the device info attribute
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
             "name": self._name,
             "manufacturer": "SleepMe",
-            "model": "Thermostat",
-            "sw_version": "1.0",
+            "model": self._model,
+            "sw_version": self._firmware_version,
+            "connections": connections,
+            "serial_number": self._serial_number,
         }
+
         self._last_update = 0  # Initialize the timestamp for the last update
         self._debounce_time = 5  # Set a debounce time in seconds
         _LOGGER.debug(f"[Device {self._device_id}] Initialized SleepMeThermostat entity")
@@ -83,7 +101,6 @@ class SleepMeThermostat(ClimateEntity):
         return {
             "is_water_low": self._is_water_low,
         }
-
     @property
     def min_temp(self):
         return 13
@@ -133,6 +150,7 @@ class SleepMeThermostat(ClimateEntity):
         _LOGGER.debug(f"[Device {self._device_id}] Fetching device status from API")
 
         try:
+            # Fetch the device status
             device_status = await self._controller.get_device_status()
             _LOGGER.debug(f"[Device {self._device_id}] Device status response: {device_status}")
 
@@ -145,6 +163,17 @@ class SleepMeThermostat(ClimateEntity):
 
             self._hvac_mode = self._determine_hvac_mode(device_status.get("control", {}).get("thermal_control_status"))
 
+            # Update the device info
+            device_info = await self._controller.get_device_info()
+            _LOGGER.debug(f"[Device {self._device_id}] Device info response: {device_info}")
+
+            self._attr_device_info.update({
+                "sw_version": device_info.get("firmware_version", self._firmware_version),
+                "connections": {("mac", device_info.get("mac_address", self._mac_address))},
+                "model": device_info.get("model", self._model),
+                "serial_number": device_info.get("serial_number", self._serial_number),
+            })
+
             # Store the device status in hass.data to be reused by other entities
             self.hass.data[DOMAIN]["device_status"] = device_status
 
@@ -153,6 +182,7 @@ class SleepMeThermostat(ClimateEntity):
 
         except Exception as e:
             _LOGGER.error(f"[Device {self._device_id}] Error updating device status: {e}")
+
 
     def _sanitize_temperature(self, temp):
         """Sanitize temperature values returned by the API."""

@@ -67,15 +67,32 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_id = user_input["device_id"]
             name = self.context["claimed_devices_dict"][device_id]
 
-            return self.async_create_entry(
-                title=f"SleepMe {name}",
-                data={
-                    "api_url": API_URL,  # Use the API_URL from constants
-                    "api_token": self.context["api_token"],
-                    "device_id": device_id,
-                    "name": name,
-                },
-            )
+            # Instantiate SleepMeClient to fetch device details
+            client = SleepMeClient(API_URL, self.context["api_token"], device_id)
+
+            try:
+                # Fetch the "about" information for the selected device
+                device_info = await client.get_device_info()
+                _LOGGER.debug(f"Device info: {device_info}")
+
+                # Store device info in the entry data
+                return self.async_create_entry(
+                    title=f"SleepMe {name}",
+                    data={
+                        "api_url": API_URL,  # Use the API_URL from constants
+                        "api_token": self.context["api_token"],
+                        "device_id": device_id,
+                        "name": name,
+                        "firmware_version": device_info.get("firmware_version"),
+                        "mac_address": device_info.get("mac_address"),
+                        "model": device_info.get("model"),
+                        "serial_number": device_info.get("serial_number"),
+                    },
+                )
+
+            except Exception as e:
+                _LOGGER.error(f"Error fetching device info: {e}")
+                errors["base"] = "cannot_fetch_device_info"
 
         # Extract claimed devices from the previous step
         claimed_devices = self.context["claimed_devices"]

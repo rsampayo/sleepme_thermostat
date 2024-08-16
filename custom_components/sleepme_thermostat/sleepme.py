@@ -98,11 +98,25 @@ class SleepMeClient:
 
     async def get_device_status(self):
         """Retrieve the device status."""
-        url = f"{self.api_url}/devices/{self.device_id}"
+        url = f"{self.api_url}/devices/{self.device_id}"  # Updated URL to remove /status
         _LOGGER.debug(f"[Device {self.device_id}] Fetching device status from {url}")
         response = await self.rate_limited_request("GET", url)
         _LOGGER.debug(f"[Device {self.device_id}] Device status: {response}")
         return response
+
+    async def get_device_info(self):
+        """Fetch the about information for the device."""
+        if not self.device_id:
+            raise ValueError("Device ID must be set to get device info.")
+            
+        url = f"{self.api_url}/devices/{self.device_id}"
+        headers = {'Authorization': f'Bearer {self.token}'}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            data = response.json()  # Parse the JSON response
+            return data.get("about", {})  # Return the "about" section of the response
 
     async def set_temp_level(self, temp_c: float):
         """Set the temperature level in Celsius and provide feedback."""
