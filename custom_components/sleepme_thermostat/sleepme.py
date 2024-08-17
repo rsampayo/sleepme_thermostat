@@ -72,6 +72,10 @@ class SleepMeClient:
                         await asyncio.sleep(backoff_time)  # Exponential backoff starting at 10 seconds
                         continue
 
+                    if response.status_code == 403:
+                        _LOGGER.error(f"[Device {self.device_id}] 403 Forbidden: Invalid API token.")
+                        raise httpx.HTTPStatusError("403 Forbidden: Invalid API token", request=response.request, response=response)
+
                     # Process the response and check if it returns JSON
                     try:
                         response_json = response.json()
@@ -83,6 +87,8 @@ class SleepMeClient:
 
             except httpx.HTTPStatusError as e:
                 _LOGGER.error(f"[Device {self.device_id}] HTTP error: {str(e)}")
+                if e.response.status_code == 403:
+                    raise  # Re-raise the exception to be caught in config_flow
             except httpx.RequestError as e:
                 _LOGGER.error(f"[Device {self.device_id}] Request error: {str(e)}")
             await asyncio.sleep((2 ** attempt) * 10)  # Exponential backoff

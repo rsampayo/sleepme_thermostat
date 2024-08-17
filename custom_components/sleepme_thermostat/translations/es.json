@@ -1,0 +1,30 @@
+{
+  "title": "SleepMe Docker PRO",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurar SleepMe Docker PRO",
+        "description": "Por favor, ingrese su token de API.",
+        "data": {
+          "api_token": "Token de API"
+        }
+      },
+      "select_device": {
+        "title": "Seleccionar Dispositivo",
+        "description": "Seleccione el dispositivo Docker PRO que desea configurar.",
+        "data": {
+          "device_id": "ID del Dispositivo"
+        }
+      }
+    },
+    "error": {
+      "invalid_token": "Token API inválido, por favor intente nuevamente.",
+      "cannot_connect": "No se pudo conectar a la API. Por favor, verifique el token e intente nuevamente.",
+      "no_devices_found": "No se encontraron dispositivos con el token proporcionado.",
+      "cannot_fetch_device_info": "No se puede obtener la información del dispositivo. Por favor, verifique su conexión e intente nuevamente."
+    }
+  },
+  "abort": {
+    "already_configured": "Este dispositivo ya está configurado."
+  }
+}

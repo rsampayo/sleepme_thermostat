@@ -4,6 +4,7 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 from .sleepme import SleepMeClient
 from .const import DOMAIN, API_URL
+from httpx import HTTPStatusError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,7 +17,8 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self.api_token = ""
 
-    def _get_schema(self):
+    @property
+    def schema(self):
         """Return the schema for the current step."""
         return vol.Schema({
             vol.Required("api_token", default=""): str,
@@ -41,18 +43,25 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not claimed_devices:
                     errors["base"] = "no_devices_found"
                 else:
-                    # Proceed to the next step with the list of devices
+                    # Store the API token and claimed devices in the context
                     self.context["api_token"] = self.api_token
                     self.context["claimed_devices"] = claimed_devices
                     return await self.async_step_select_device()
 
+            except HTTPStatusError as e:
+                _LOGGER.error(f"HTTP error fetching claimed devices: {e}")
+                # Check if the error is related to a 403 Forbidden response
+                if e.response.status_code == 403:
+                    errors["base"] = "invalid_token"
+                else:
+                    errors["base"] = "cannot_connect"
             except Exception as e:
-                _LOGGER.error(f"Error fetching claimed devices: {e}")
+                _LOGGER.error(f"Unexpected error fetching claimed devices: {e}")
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user",
-            data_schema=self._get_schema(),
+            data_schema=self.schema,
             errors=errors,
         )
 
@@ -67,6 +76,10 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_id = user_input["device_id"]
             name = self.context["claimed_devices_dict"][device_id]
 
+            # Set a unique ID for the device configuration
+            await self.async_set_unique_id(device_id)
+            self._abort_if_unique_id_configured()
+
             # Instantiate SleepMeClient to fetch device details
             client = SleepMeClient(API_URL, self.context["api_token"], device_id)
 
@@ -79,7 +92,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"SleepMe {name}",
                     data={
-                        "api_url": API_URL,  # Use the API_URL from constants
+                        "api_url": API_URL,
                         "api_token": self.context["api_token"],
                         "device_id": device_id,
                         "name": name,
