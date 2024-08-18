@@ -1,9 +1,9 @@
 {
-  "title": "SleepMe Dock PRO",
+  "title": "SleepMe Dock Pro",
   "config": {
     "step": {
       "user": {
-        "title": "Configurar SleepMe Dock PRO",
+        "title": "Configurar SleepMe Dock Pro",
         "description": "Por favor, ingrese su token de API.",
         "data": {
           "api_token": "Token de API"
@@ -11,7 +11,7 @@
       },
       "select_device": {
         "title": "Seleccionar Dispositivo",
-        "description": "Seleccione el dispositivo Dock PRO que desea configurar.",
+        "description": "Seleccione el dispositivo Dock Pro que desea configurar.",
         "data": {
           "device_id": "ID del Dispositivo"
         }
