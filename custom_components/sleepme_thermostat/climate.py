@@ -31,7 +31,11 @@ class SleepMeThermostat(ClimateEntity):
         self._device_id = device_id
         self._target_temperature = None
         self._hvac_mode = HVACMode.OFF
-        self._supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+        self._supported_features = (
+            ClimateEntityFeature.TARGET_TEMPERATURE |
+            ClimateEntityFeature.TURN_ON |
+            ClimateEntityFeature.TURN_OFF
+        )
         self._current_temperature = None
         self._is_water_low = False
         self._skip_next_update = False  # Flag to control whether to skip the next update
@@ -101,6 +105,7 @@ class SleepMeThermostat(ClimateEntity):
         return {
             "is_water_low": self._is_water_low,
         }
+
     @property
     def min_temp(self):
         return 13
@@ -182,7 +187,6 @@ class SleepMeThermostat(ClimateEntity):
 
         except Exception as e:
             _LOGGER.error(f"[Device {self._device_id}] Error updating device status: {e}")
-
 
     def _sanitize_temperature(self, temp):
         """Sanitize temperature values returned by the API."""
