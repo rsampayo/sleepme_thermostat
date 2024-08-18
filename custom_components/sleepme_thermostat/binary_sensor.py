@@ -42,7 +42,7 @@ class WaterLevelLowSensor(BinarySensorEntity):
         # Fetch device info from the thermostat entity
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
-            "name": f"SleepMe {name}",
+            "name": f"Dock Pro {name}",
             "manufacturer": "SleepMe",
             "model": thermostat._model,
             "sw_version": thermostat._firmware_version,

@@ -27,7 +27,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class SleepMeThermostat(ClimateEntity):
     def __init__(self, controller, device_id, name, device_info):
         self._controller = controller
-        self._name = f"SleepMe {name}"
+        self._name = f"Dock Pro {name}"
         self._device_id = device_id
         self._target_temperature = None
         self._hvac_mode = HVACMode.OFF
