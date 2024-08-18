@@ -1,9 +1,9 @@
 {
-  "title": "SleepMe Docker PRO",
+  "title": "SleepMe Dock Pro",
   "config": {
     "step": {
       "user": {
-        "title": "Add SleepMe Docker PRO",
+        "title": "Add SleepMe Dock Pro",
         "description": "Please enter your API token to proceed.",
         "data": {
           "api_token": "API Token"
@@ -14,7 +14,7 @@
       },
       "select_device": {
         "title": "Select SleepMe Device",
-        "description": "Select the Docker PRO device you want to add.",
+        "description": "Select the Dock Pro device you want to add.",
         "data": {
           "device_id": "Device"
         },
