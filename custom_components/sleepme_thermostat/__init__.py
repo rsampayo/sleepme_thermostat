@@ -2,6 +2,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from .sleepme import SleepMeClient
+from .update_manager import SleepMeUpdateManager
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,6 +43,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sleepme_controller = SleepMeClient(api_url, api_token, device_id)
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
+    # Create and store the update manager
+    update_manager = SleepMeUpdateManager(hass, api_url, api_token, device_id)
+    hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
+
+    # Trigger the initial data fetch
+    await update_manager.async_config_entry_first_refresh()
+
     # Store the device information in hass.data for access by platforms
     hass.data[DOMAIN]["device_info"] = {
         "firmware_version": firmware_version,
@@ -50,7 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "serial_number": serial_number,
     }
 
-    _LOGGER.debug(f"SleepMeClient initialized and stored in hass.data for device {device_id}.")
+    _LOGGER.debug(f"SleepMeClient and Update Manager initialized and stored in hass.data for device {device_id}.")
 
     # Forward the entry setup to the specific platforms, including the sensors platform
     await hass.config_entries.async_forward_entry_setups(entry, ["climate", "binary_sensor"])

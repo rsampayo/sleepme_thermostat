@@ -11,17 +11,18 @@ _LOGGER = logging.getLogger(__name__)
 class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SleepMe Thermostat."""
 
-    VERSION = 1
+    VERSION = 2  # Updated to version 2
 
     def __init__(self) -> None:
         """Initialize the config flow."""
         self.api_token = ""
+        self.claimed_devices = []
 
-    @property
-    def schema(self):
+    @staticmethod
+    def _schema(api_token=""):
         """Return the schema for the current step."""
         return vol.Schema({
-            vol.Required("api_token", default=""): str,
+            vol.Required("api_token", default=api_token): str,
         })
 
     async def async_step_user(self, user_input=None) -> FlowResult:
@@ -37,15 +38,13 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 # Get the list of claimed devices
-                claimed_devices = await client.get_claimed_devices()
-                _LOGGER.debug(f"Claimed devices: {claimed_devices}")
+                self.claimed_devices = await client.get_claimed_devices()
+                _LOGGER.debug(f"Claimed devices: {self.claimed_devices}")
 
-                if not claimed_devices:
+                if not self.claimed_devices:
                     errors["base"] = "no_devices_found"
                 else:
-                    # Store the API token and claimed devices in the context
-                    self.context["api_token"] = self.api_token
-                    self.context["claimed_devices"] = claimed_devices
+                    # Proceed to select device step
                     return await self.async_step_select_device()
 
             except HTTPStatusError as e:
@@ -61,7 +60,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=self.schema,
+            data_schema=self._schema(self.api_token),
             errors=errors,
         )
 
@@ -81,7 +80,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             # Instantiate SleepMeClient to fetch device details
-            client = SleepMeClient(API_URL, self.context["api_token"], device_id)
+            client = SleepMeClient(API_URL, self.api_token, device_id)
 
             try:
                 # Fetch the "about" information for the selected device
@@ -90,10 +89,10 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # Store device info in the entry data
                 return self.async_create_entry(
-                    title=f"Dock Pro {name}",
+                    title=f"SleepMe {name}",
                     data={
                         "api_url": API_URL,
-                        "api_token": self.context["api_token"],
+                        "api_token": self.api_token,
                         "device_id": device_id,
                         "name": name,
                         "firmware_version": device_info.get("firmware_version"),
@@ -107,9 +106,8 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(f"Error fetching device info: {e}")
                 errors["base"] = "cannot_fetch_device_info"
 
-        # Extract claimed devices from the previous step
-        claimed_devices = self.context["claimed_devices"]
-        claimed_devices_dict = {device["id"]: device["name"] for device in claimed_devices}
+        # Prepare the selection form
+        claimed_devices_dict = {device["id"]: device["name"] for device in self.claimed_devices}
         self.context["claimed_devices_dict"] = claimed_devices_dict
 
         data_schema = vol.Schema({

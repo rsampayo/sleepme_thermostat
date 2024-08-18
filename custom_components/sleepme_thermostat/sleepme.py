@@ -118,11 +118,17 @@ class SleepMeClient:
         url = f"{self.api_url}/devices/{self.device_id}"
         headers = {'Authorization': f'Bearer {self.token}'}
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()  # Raise an exception for HTTP errors
-            data = response.json()  # Parse the JSON response
-            return data.get("about", {})  # Return the "about" section of the response
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()  # Raise an exception for HTTP errors
+                data = response.json()  # Parse the JSON response
+                return data.get("about", {})  # Return the "about" section of the response
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                _LOGGER.warning(f"[Device {self.device_id}] 429 Too Many Requests: {str(e)}. Skipping this update cycle.")
+                return {}  # Gracefully skip this update cycle
+            raise
 
     async def set_temp_level(self, temp_c: float):
         """Set the temperature level in Celsius and provide feedback."""
