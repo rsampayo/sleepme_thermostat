@@ -38,6 +38,7 @@ class SleepMeThermostat(ClimateEntity):
         )
         self._current_temperature = None
         self._is_water_low = False
+        self._is_connected = False  # Add connection status attribute
         self._skip_next_update = False  # Flag to control whether to skip the next update
         self._attr_unique_id = f"{DOMAIN}_{device_id}_thermostat"
 
@@ -104,7 +105,13 @@ class SleepMeThermostat(ClimateEntity):
     def extra_state_attributes(self):
         return {
             "is_water_low": self._is_water_low,
+            "is_connected": self._is_connected,  # Add connection status to state attributes
         }
+
+#    @property
+#    def is_connected(self):
+#        """Return the connection status of the device."""
+#        return self._is_connected
 
     @property
     def min_temp(self):
@@ -165,6 +172,7 @@ class SleepMeThermostat(ClimateEntity):
             self._current_temperature = current_temp
             self._target_temperature = set_temp
             self._is_water_low = device_status.get("status", {}).get("is_water_low", False)
+            self._is_connected = device_status.get("status", {}).get("is_connected", False)  # Update connection status
 
             self._hvac_mode = self._determine_hvac_mode(device_status.get("control", {}).get("thermal_control_status"))
 
@@ -182,7 +190,7 @@ class SleepMeThermostat(ClimateEntity):
             # Store the device status in hass.data to be reused by other entities
             self.hass.data[DOMAIN]["device_status"] = device_status
 
-            _LOGGER.debug(f"[Device {self._device_id}] Writing state to Home Assistant: current_temp={self._current_temperature}, target_temp={self._target_temperature}, hvac_mode={self._hvac_mode}, is_water_low={self._is_water_low}")
+            _LOGGER.debug(f"[Device {self._device_id}] Writing state to Home Assistant: current_temp={self._current_temperature}, target_temp={self._target_temperature}, hvac_mode={self._hvac_mode}, is_water_low={self._is_water_low}, is_connected={self._is_connected}")
             self.async_write_ha_state()
 
         except Exception as e:
