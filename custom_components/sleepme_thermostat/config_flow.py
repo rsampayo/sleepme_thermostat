@@ -89,7 +89,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # Store device info in the entry data
                 return self.async_create_entry(
-                    title=f"SleepMe {name}",
+                    title=f"Dock Pro {name}",
                     data={
                         "api_url": API_URL,
                         "api_token": self.api_token,
