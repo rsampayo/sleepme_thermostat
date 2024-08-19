@@ -14,7 +14,7 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
         self.device_id = device_id
 
         # Set the update interval to 15 seconds
-        update_interval = timedelta(seconds=15)
+        update_interval = timedelta(seconds=30)
 
         super().__init__(
             hass,
