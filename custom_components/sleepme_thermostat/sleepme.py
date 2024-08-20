@@ -23,7 +23,7 @@ class SleepMeClient:
         self.device_id = device_id
         _LOGGER.debug(f"[Device {self.device_id}] Initialized SleepMeClient with API URL: {self.api_url}")
 
-    async def rate_limited_request(self, method: str, url: str, params=None, data=None, input_headers=None, retries=5):
+    async def rate_limited_request(self, method: str, url: str, params=None, data=None, input_headers=None, retries=3):
         """Make an API request with global rate limiting and retry logic for PATCH calls."""
         async with rate_limit_lock:
             current_time = time.time()
@@ -62,7 +62,7 @@ class SleepMeClient:
 
                     if response.status_code == 429:
                         if method == "PATCH":
-                            backoff_time = (2 ** attempt) * 10
+                            backoff_time = (2 ** attempt) * 30
                             _LOGGER.warning(f"[Device {self.device_id}] 429 Too Many Requests. Retrying after {backoff_time} seconds...")
                             await asyncio.sleep(backoff_time)  # Exponential backoff starting at 10 seconds
                             continue
@@ -107,25 +107,7 @@ class SleepMeClient:
         _LOGGER.debug(f"[Device {self.device_id}] Device status: {response}")
         return response
 
-    async def get_device_info(self):
-        """Fetch the about information for the device."""
-        if not self.device_id:
-            raise ValueError("Device ID must be set to get device info.")
-            
-        url = f"{self.api_url}/devices/{self.device_id}"
-        headers = {'Authorization': f'Bearer {self.token}'}
-        
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-                return data.get("about", {})
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                _LOGGER.warning(f"[Device {self.device_id}] 429 Too Many Requests: {str(e)}. Skipping this update cycle.")
-                return {}
-            raise
+
 
     async def set_temp_level(self, temp_c: float):
         """Set the temperature level in Celsius and provide feedback."""
@@ -171,4 +153,4 @@ class SleepMeClient:
                 _LOGGER.warning(f"[Device {self.device_id}] Device status still not set to {status} after re-check. Expected: {status}, Actual: {actual_status}")
 
 # Initialize the controller globally
-sleepme_controller = None
+#sleepme_controller = None

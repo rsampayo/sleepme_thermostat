@@ -38,6 +38,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             "model": device_info.get("model"),
             "sw_version": device_info.get("firmware_version"),
             "connections": {("mac", device_info.get("mac_address"))},
+            "serial_number": device_info.get("serial_number"),
         }
 
     @property

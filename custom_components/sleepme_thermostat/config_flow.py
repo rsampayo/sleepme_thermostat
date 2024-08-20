@@ -11,7 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SleepMe Thermostat."""
 
-    VERSION = 2  # Updated to version 2
+    VERSION = 3  # Updated to version 2
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -83,9 +83,9 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             client = SleepMeClient(API_URL, self.api_token, device_id)
 
             try:
-                # Fetch the "about" information for the selected device
-                device_info = await client.get_device_info()
-                _LOGGER.debug(f"Device info: {device_info}")
+                # Fetch the device status, which now includes "about" information
+                device_status = await client.get_device_status()
+                _LOGGER.debug(f"Device status: {device_status}")
 
                 # Store device info in the entry data
                 return self.async_create_entry(
@@ -95,15 +95,15 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "api_token": self.api_token,
                         "device_id": device_id,
                         "name": name,
-                        "firmware_version": device_info.get("firmware_version"),
-                        "mac_address": device_info.get("mac_address"),
-                        "model": device_info.get("model"),
-                        "serial_number": device_info.get("serial_number"),
+                        "firmware_version": device_status.get("about", {}).get("firmware_version"),
+                        "mac_address": device_status.get("about", {}).get("mac_address"),
+                        "model": device_status.get("about", {}).get("model"),
+                        "serial_number": device_status.get("about", {}).get("serial_number"),
                     },
                 )
 
             except Exception as e:
-                _LOGGER.error(f"Error fetching device info: {e}")
+                _LOGGER.error(f"Error fetching device status: {e}")
                 errors["base"] = "cannot_fetch_device_info"
 
         # Prepare the selection form

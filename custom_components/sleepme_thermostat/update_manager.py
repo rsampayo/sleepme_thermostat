@@ -13,8 +13,8 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
         self.client = SleepMeClient(api_url, token, device_id)
         self.device_id = device_id
 
-        # Set the update interval to 15 seconds
-        update_interval = timedelta(seconds=30)
+        # Set the update interval to 30 seconds
+        update_interval = timedelta(seconds=20)
 
         super().__init__(
             hass,
@@ -26,15 +26,14 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch the latest data from the SleepMe API."""
         try:
-            # Fetch both device status and "about" info
+            # Fetch device status (which now includes both status and about info)
             device_status = await self.client.get_device_status()
-            device_info = await self.client.get_device_info()
 
             # Combine them into one dictionary for easier access
             return {
                 "status": device_status.get("status", {}),
                 "control": device_status.get("control", {}),
-                "about": device_info,
+                "about": device_status.get("about", {}),  # Assuming get_device_status returns "about" info
             }
 
         except Exception as e:
