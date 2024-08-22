@@ -47,13 +47,17 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Proceed to select device step
                     return await self.async_step_select_device()
 
-            except HTTPStatusError as e:
-                _LOGGER.error(f"HTTP error fetching claimed devices: {e}")
-                # Check if the error is related to a 403 Forbidden response
-                if e.response.status_code == 403:
+            except ValueError as err:
+                # Check for specific error raised for invalid token
+                if str(err) == "invalid_token":
+                    _LOGGER.error(f"Invalid token error: {err}")
                     errors["base"] = "invalid_token"
                 else:
+                    _LOGGER.error(f"Unexpected ValueError: {err}")
                     errors["base"] = "cannot_connect"
+            except HTTPStatusError as e:
+                _LOGGER.error(f"HTTP error fetching claimed devices: {e}")
+                errors["base"] = "cannot_connect"
             except Exception as e:
                 _LOGGER.error(f"Unexpected error fetching claimed devices: {e}")
                 errors["base"] = "cannot_connect"

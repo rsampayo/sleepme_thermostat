@@ -39,7 +39,11 @@ class SleepMeAPI:
                 return response.json()  # Process and return the JSON response
 
             except httpx.HTTPStatusError as e:
-                if response.status_code == 429:
+                # Handle specific HTTP status codes
+                if response.status_code == 403:
+                    _LOGGER.error(f"[{request_id}] Invalid API token. Received 403 Forbidden for {self.api_url}/{endpoint}.")
+                    raise ValueError("invalid_token")
+                elif response.status_code == 429:
                     backoff_time = (2 ** attempt) * 30
                     _LOGGER.warning(f"[{request_id}] 429 Too Many Requests. Retrying after {backoff_time} seconds...")
                     await asyncio.sleep(backoff_time)
@@ -62,23 +66,23 @@ class SleepMeAPI:
 
     async def _cancel_previous_patch(self):
         """Cancel the ongoing PATCH request if a new one is made."""
-        if self._current_patch_task and not self._current_patch_task.done():
-            _LOGGER.debug("Attempting to cancel the previous PATCH request...")
-            self._current_patch_task.cancel()
-            try:
-                await self._current_patch_task
-                _LOGGER.warning("Previous PATCH request and its retries were cancelled successfully.")
-            except asyncio.CancelledError:
-                _LOGGER.warning("Previous PATCH request and its retries were cancelled successfully (CancelledError).")
-            except Exception as e:
-                _LOGGER.error(f"Error while cancelling the PATCH request: {e}")
-            finally:
-                _LOGGER.debug("Previous PATCH request cancellation process completed.")
-        else:
-            if self._current_patch_task:
-                _LOGGER.debug("No previous PATCH request to cancel (it is already done).")
+        if self._current_patch_task:
+            if not self._current_patch_task.done():
+                _LOGGER.debug("Attempting to cancel the previous PATCH request...")
+                self._current_patch_task.cancel()
+                try:
+                    await self._current_patch_task
+                    _LOGGER.warning("Previous PATCH request and its retries were cancelled successfully.")
+                except asyncio.CancelledError:
+                    _LOGGER.warning("Previous PATCH request and its retries were cancelled successfully (CancelledError).")
+                except Exception as e:
+                    _LOGGER.error(f"Error while cancelling the PATCH request: {e}")
+                finally:
+                    _LOGGER.debug("Previous PATCH request cancellation process completed.")
             else:
-                _LOGGER.debug("No previous PATCH request exists.")
+                _LOGGER.debug("No previous PATCH request to cancel (it is already done).")
+        else:
+            _LOGGER.debug("No previous PATCH request exists.")
 
     async def make_request(self, method: str, endpoint: str, params=None, data=None, input_headers=None):
         """Wrapper method to handle rate limiting and calling _perform_request."""
