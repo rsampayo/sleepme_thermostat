@@ -11,7 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SleepMe Thermostat."""
 
-    VERSION = 3  # Updated to version 2
+    VERSION = 3
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -107,8 +107,11 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_fetch_device_info"
 
         # Prepare the selection form
-        claimed_devices_dict = {device["id"]: device["name"] for device in self.claimed_devices}
-        self.context["claimed_devices_dict"] = claimed_devices_dict
+        if self.claimed_devices:
+            claimed_devices_dict = {device["id"]: device["name"] for device in self.claimed_devices}
+            self.context["claimed_devices_dict"] = claimed_devices_dict
+        else:
+            errors["base"] = "no_devices_found"
 
         data_schema = vol.Schema({
             vol.Required("device_id"): vol.In(claimed_devices_dict)

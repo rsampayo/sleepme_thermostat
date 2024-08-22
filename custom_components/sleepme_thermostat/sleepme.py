@@ -68,18 +68,26 @@ class SleepMeClient:
         
         response = await self.api.make_request("GET", endpoint)
 
-        # Log an error if no devices are returned
-        if not response or not response.get('devices'):
-            _LOGGER.error(f"No devices found for the given token at {endpoint}. Response: {response}")
-            return []
+        # Check if the response is a list, which it should be
+        if isinstance(response, list):
+            _LOGGER.info(f"Successfully fetched claimed devices: {response}")
+            return response
 
-        _LOGGER.info(f"Successfully fetched claimed devices for {self.device_id}.")
-        return response
+        # Log an error if the response format is unexpected
+        _LOGGER.error(f"Unexpected response format for claimed devices: {response}")
+        return []
 
     async def get_device_status(self):
         """Retrieve the device status."""
         endpoint = f"devices/{self.device_id}"
         _LOGGER.debug(f"[Device {self.device_id}] Fetching device status from {endpoint}")
+        
         response = await self.api.make_request("GET", endpoint)
-        _LOGGER.debug(f"[Device {self.device_id}] Device status: {response}")
-        return response
+        
+        # Check if the response is a dictionary as expected
+        if isinstance(response, dict):
+            _LOGGER.debug(f"[Device {self.device_id}] Device status: {response}")
+            return response
+        
+        _LOGGER.error(f"Failed to fetch device status for {self.device_id}. Response: {response}")
+        return {}
