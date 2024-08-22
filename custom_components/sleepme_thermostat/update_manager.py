@@ -13,8 +13,11 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
         self.client = SleepMeClient(api_url, token, device_id)
         self.device_id = device_id
 
-        # Set the update interval to 30 seconds
-        update_interval = timedelta(seconds=20)
+        # Initialize the last known good status as None
+        self._last_valid_status = None
+
+        # Set the update interval to 20 seconds
+        update_interval = timedelta(seconds=120)
 
         super().__init__(
             hass,
@@ -26,16 +29,32 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch the latest data from the SleepMe API."""
         try:
-            # Fetch device status (which now includes both status and about info)
+            # Fetch device status from the API
             device_status = await self.client.get_device_status()
 
-            # Combine them into one dictionary for easier access
-            return {
+            # If the device status is empty, return the last valid status
+            if not device_status:
+                _LOGGER.warning(f"Using last valid status for device {self.device_id} due to empty or failed update.")
+                return self._last_valid_status or {
+                    "status": {},
+                    "control": {},
+                    "about": {},
+                }
+
+            # Cache the current valid status
+            self._last_valid_status = {
                 "status": device_status.get("status", {}),
                 "control": device_status.get("control", {}),
-                "about": device_status.get("about", {}),  # Assuming get_device_status returns "about" info
+                "about": device_status.get("about", {}),
             }
+
+            return self._last_valid_status
 
         except Exception as e:
             _LOGGER.error(f"Error updating device data for {self.device_id}: {e}")
-            raise
+            # If an error occurs, return the last valid status
+            return self._last_valid_status or {
+                "status": {},
+                "control": {},
+                "about": {},
+            }
