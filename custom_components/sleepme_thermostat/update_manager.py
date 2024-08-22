@@ -17,7 +17,7 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
         self._last_valid_status = None
 
         # Set the update interval to 20 seconds
-        update_interval = timedelta(seconds=120)
+        update_interval = timedelta(seconds=20)
 
         super().__init__(
             hass,
