@@ -19,7 +19,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.claimed_devices = []
 
     @staticmethod
-    def _schema(api_token=""):
+    def _schema(api_token: str = "") -> vol.Schema:
         """Return the schema for the current step."""
         return vol.Schema({
             vol.Required("api_token", default=api_token): str,
@@ -118,7 +118,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "no_devices_found"
 
         data_schema = vol.Schema({
-            vol.Required("device_id"): vol.In(claimed_devices_dict)
+            vol.Required("device_id"): vol.In(self.context["claimed_devices_dict"])
         })
 
         return self.async_show_form(
