@@ -37,7 +37,7 @@ class WaterLevelLowSensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._thermostat = thermostat
         self._device_id = device_id
-        self._attr_name = f"{name} Water Level Low"
+        self._attr_name = f"Dock Pro {name} Water Level"
         self._attr_device_class = "problem"
         self._attr_unique_id = f"{DOMAIN}_{device_id}_water_low"
 
@@ -56,7 +56,7 @@ class DeviceConnectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._thermostat = thermostat
         self._device_id = device_id
-        self._attr_name = f"{name} Connected"
+        self._attr_name = f"Dock Pro {name} Connected"
         self._attr_device_class = "connectivity"
         self._attr_unique_id = f"{DOMAIN}_{device_id}_connected"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
