@@ -61,7 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug(f"SleepMeClient and Update Manager initialized and stored in hass.data for device {device_id}.")
 
     # Forward the entry setup to the specific platforms, including the sensors platform
-    await hass.config_entries.async_forward_entry_setups(entry, ["climate", "binary_sensor"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["climate", "binary_sensor", "sensor"])
 
     _LOGGER.info("SleepMe Thermostat component initialized successfully.")
     return True
