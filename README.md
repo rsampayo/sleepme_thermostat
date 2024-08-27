@@ -1,16 +1,30 @@
-# SleepMe Thermostat Integration
+# SleepMe Dock Pro Integration
 
-![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Component-%2341BDF5)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Custom%20Component-%2341BDF5.svg?style=for-the-badge)](https://www.home-assistant.io/)
+[![hacs][hacsbadge]](https://github.com/hacs/default)
+
+[hacsbadge]: https://img.shields.io/badge/HACS-Custom_Repository-41BDF5.svg?style=for-the-badge
 
 ## Overview
 
-The **SleepMe Thermostat Integration** is a custom component for Home Assistant, designed to provide seamless control and automation for the Chilipad Dock Pro Bed Cooling System. This integration allows you to manage your sleep environment with precise temperature controls and real-time monitoring of your device's water level, ensuring optimal performance and comfort throughout the night.
+The **SleepMe Dock Pro Integration** is a custom component for Home Assistant, designed to provide seamless control and automation for the Chilipad Dock Pro Bed Cooling System. This integration allows you to manage your sleep environment with precise temperature controls and real-time monitoring of your device's water level, ensuring optimal performance and comfort throughout the night.
 
 ## About the Chilipad Dock Pro Bed Cooling System
 
-The Chilipad Dock Pro is a cutting-edge bed cooling system that regulates your bed's temperature between 55°F and 115°F, ensuring you stay comfortable all night long, regardless of room temperature or your body’s heat load. The system uses water circulation to maintain your desired temperature, making it an effective solution for hot sleepers or those who want a cooler sleep environment. 
+The [Chilipad Dock Pro](https://sleep.me/) is a cutting-edge bed cooling system that regulates your bed's temperature between 55°F and 115°F, ensuring you stay comfortable all night long, regardless of room temperature or your body’s heat load. The system uses water circulation to maintain your desired temperature, making it an effective solution for hot sleepers or those who want a cooler sleep environment.
 
 ## Installation
+
+### HACS Installation (Custom Repository)
+
+1. Add the repository to HACS:
+   - Go to HACS in Home Assistant.
+   - Click the three dots in the top right corner and select "Custom repositories."
+   - Enter the repository URL: `https://github.com/rsampayo/sleepme_thermostat` and select "Integration."
+   - Click "Add."
+2. Install the integration from the HACS store.
+3. Restart Home Assistant.
+4. Add the integration via the Home Assistant UI.
 
 ### Manual Installation
 
