@@ -42,7 +42,7 @@ class SleepMeAPI:
             _LOGGER.debug(f"[{request_id}] API request successful.")
             return result
         except Exception as e:
-            _LOGGER.error(f"[{request_id}] Exception occurred: {e}. Passing to handle_error.")
+            _LOGGER.debug(f"[{request_id}] Exception occurred: {e}. Passing to handle_error.")
             return await self.handle_error(e, method, endpoint, params, data, input_headers, retries)
 
     async def perform_request(self, method: str, endpoint: str, params=None, data=None, input_headers=None):
@@ -62,7 +62,7 @@ class SleepMeAPI:
         request_id = f"{method.upper()}-{endpoint}-{int(time.time())}"
 
         if retries <= 0:
-            _LOGGER.error(f"[{request_id}] API request to {endpoint} failed after all retries.")
+            _LOGGER.debug(f"[{request_id}] API request to {endpoint} failed after all retries.")
             return {}  # Return an empty dictionary on failure
 
         _LOGGER.warning(f"[{request_id}] Handling error: {error}. Retries remaining: {retries}")
@@ -70,7 +70,7 @@ class SleepMeAPI:
         # Determine backoff time based on error type
         if isinstance(error, httpx.HTTPStatusError):
             if error.response.status_code == 403:
-                _LOGGER.error(f"[{request_id}] Invalid API token. Received 403 Forbidden for {self.api_url}/{endpoint}.")
+                _LOGGER.debug(f"[{request_id}] Invalid API token. Received 403 Forbidden for {self.api_url}/{endpoint}.")
                 raise ValueError("invalid_token")
             elif error.response.status_code == 429:
                 # Backoff times: 30, 60, 120, 240... seconds for 429 errors
@@ -81,14 +81,14 @@ class SleepMeAPI:
                 initial_backoff = 10
                 _LOGGER.warning(f"[{request_id}] Server error {error.response.status_code}. Applying backoff starting at {initial_backoff} seconds.")
             else:
-                _LOGGER.error(f"[{request_id}] HTTP error {error.response.status_code}. No retry configured.")
+                _LOGGER.debug(f"[{request_id}] HTTP error {error.response.status_code}. No retry configured.")
                 raise ValueError("cannot_connect")
         elif isinstance(error, httpx.TimeoutException):
             # Backoff times: 10, 20, 40, 80... seconds for timeouts
             initial_backoff = 10
             _LOGGER.warning(f"[{request_id}] Timeout occurred. Applying backoff starting at {initial_backoff} seconds.")
         elif isinstance(error, httpx.RequestError):
-            _LOGGER.error(f"[{request_id}] Request error: {error}. Cannot connect.")
+            _LOGGER.debug(f"[{request_id}] Request error: {error}. Cannot connect.")
             raise ValueError("cannot_connect")
 
         backoff_time = initial_backoff * (2 ** (retries - 1))
