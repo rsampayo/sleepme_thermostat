@@ -134,6 +134,9 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         self.async_write_ha_state()
 
     async def async_set_preset_mode(self, preset_mode):
+        # If device is off and trying to set a preset other than PRESET_NONE, turn it on first
+        if self.hvac_mode == HVACMode.OFF and preset_mode != PRESET_NONE:
+            await self.async_set_hvac_mode(HVACMode.AUTO)
         if preset_mode in PRESET_TEMPERATURES:
             # Save the old target temperature to restore when changing to PRESET_NONE
             if self.target_temperature is not None:
