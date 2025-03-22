@@ -29,7 +29,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         self._name = f"Dock Pro {name}"
         self._device_id = device_id
         self._attr_unique_id = f"{DOMAIN}_{device_id}_thermostat"
-        self._previous_previous_target_temperature = None
+        self._previous_target_temperature = None
 
         # Set up device info attributes
         self._attr_device_info = {
