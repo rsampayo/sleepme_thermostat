@@ -3,10 +3,11 @@ from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode,
     ClimateEntityFeature,
+    PRESET_NONE
 )
 from homeassistant.const import UnitOfTemperature
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN
+from .const import DOMAIN, PRESET_MAX_COOL, PRESET_MAX_HEAT, PRESET_TEMPERATURES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         self._name = f"Dock Pro {name}"
         self._device_id = device_id
         self._attr_unique_id = f"{DOMAIN}_{device_id}_thermostat"
-        self._target_temperature = None
+        self._previous_previous_target_temperature = None
 
         # Set up device info attributes
         self._attr_device_info = {
@@ -73,12 +74,23 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
     def hvac_modes(self):
         return [HVACMode.OFF, HVACMode.AUTO]
 
+    @property 
+    def preset_modes(self):
+        return [PRESET_NONE, PRESET_MAX_HEAT, PRESET_MAX_COOL]
+
+    @property 
+    def preset_mode(self):
+        if self.hvac_mode == HVACMode.OFF:
+            return PRESET_NONE
+        return self._determine_preset_mode(self.coordinator.data["control"].get("set_temperature_c"))
+
     @property
     def supported_features(self):
         return (
             ClimateEntityFeature.TARGET_TEMPERATURE |
             ClimateEntityFeature.TURN_ON |
-            ClimateEntityFeature.TURN_OFF
+            ClimateEntityFeature.TURN_OFF |
+            ClimateEntityFeature.PRESET_MODE
         )
 
     @property
@@ -98,7 +110,9 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         if target_temp is None:
             raise ValueError("Temperature is required")
 
-        if target_temp < self.min_temp or target_temp > self.max_temp:
+        if (target_temp < self.min_temp or target_temp > self.max_temp) and \
+            (target_temp not in PRESET_TEMPERATURES.values()):
+
             _LOGGER.warning(f"[Device {self._device_id}] Temperature {target_temp}C is out of range.")
             return
 
@@ -119,14 +133,27 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         self.coordinator.data["control"]["thermal_control_status"] = "active" if hvac_mode == HVACMode.AUTO else "standby"
         self.async_write_ha_state()
 
+    async def async_set_preset_mode(self, preset_mode):
+        if preset_mode in PRESET_TEMPERATURES:
+            # Save the old target temperature to restore when changing to PRESET_NONE
+            if self.target_temperature is not None:
+                self._previous_target_temperature = self.target_temperature
+            await self.async_set_temperature(temperature=PRESET_TEMPERATURES[preset_mode])
+        elif preset_mode == PRESET_NONE:
+            # Restore to a meaningful temperature, using the current temperature if
+            # that's not possible
+            if self.target_temperature is None:
+                if self._previous_target_temperature is not None:
+                    await self.async_set_temperature(temperature=self._previous_target_temperature)
+                else:
+                    # Use the current temperature as the new target
+                    await self.async_set_temperature(temperature=self.current_temperature)
+
     def _sanitize_temperature(self, temp):
         """Sanitize temperature values returned by the API."""
-        if temp == -1:
-            _LOGGER.warning(f"[Device {self._device_id}] API returned -1, setting temperature to minimum allowed {self.min_temp}C.")
-            return self.min_temp
-        elif temp == 999:
-            _LOGGER.warning(f"[Device {self._device_id}] API returned 999, setting temperature to maximum allowed {self.max_temp}C.")
-            return self.max_temp
+        if temp in PRESET_TEMPERATURES.values():
+            # Magic temperature representing Max Heat or Max Cool
+            return None
         return temp
 
     def _determine_hvac_mode(self, thermal_control_status):
@@ -134,3 +161,10 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         if thermal_control_status == "active":
             return HVACMode.AUTO
         return HVACMode.OFF
+
+    def _determine_preset_mode(self, target_temperature):
+        """Determine the active preset mode, if any."""
+        for (mode, target) in PRESET_TEMPERATURES.items():
+            if target_temperature == target:
+                return mode
+        return PRESET_NONE
