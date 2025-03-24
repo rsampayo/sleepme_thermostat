@@ -10,7 +10,7 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
     """Manages data updates for SleepMe devices."""
 
     def __init__(self, hass: HomeAssistant, api_url: str, token: str, device_id: str):
-        self.client = SleepMeClient(api_url, token, device_id)
+        self.client = SleepMeClient(hass, api_url, token, device_id)
         self.device_id = device_id
 
         # Initialize the last known good status as None

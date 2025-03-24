@@ -1,5 +1,6 @@
 import logging
 from .sleepme_api import SleepMeAPI
+from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -8,11 +9,11 @@ def round_half_up(n):
     return round(n * 2) / 2
 
 class SleepMeClient:
-    def __init__(self, api_url: str, token: str, device_id: str = None):
+    def __init__(self, hass: HomeAssistant, api_url: str, token: str, device_id: str = None):
         self.api_url = api_url
         self.token = token
         self.device_id = device_id
-        self.api = SleepMeAPI(api_url, token)
+        self.api = SleepMeAPI(hass, api_url, token)
         _LOGGER.debug(f"[Device {self.device_id}] Initialized SleepMeClient with API URL: {self.api_url}")
 
     async def set_temp_level(self, temp_c: float, retries: int = 2):

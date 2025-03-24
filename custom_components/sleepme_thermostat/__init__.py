@@ -40,7 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     # Initialize the SleepMe client and store it in hass.data for shared access
-    sleepme_controller = SleepMeClient(api_url, api_token, device_id)
+    sleepme_controller = SleepMeClient(hass, api_url, api_token, device_id)
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
     # Create and store the update manager
