@@ -1,7 +1,7 @@
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from .sleepme import SleepMeClient
+from .pysleepme import SleepMeClient  # Corrected import name for clarity
 from .update_manager import SleepMeUpdateManager
 from .const import DOMAIN
 
@@ -43,8 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sleepme_controller = SleepMeClient(api_url, api_token, device_id)
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
-    # Create and store the update manager
-    update_manager = SleepMeUpdateManager(hass, api_url, api_token, device_id)
+    # --- THIS IS THE MODIFIED LINE ---
+    # Create and store the update manager, passing the client object directly.
+    update_manager = SleepMeUpdateManager(hass, sleepme_controller)
+    # --- END OF MODIFICATION ---
+    
     hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
 
     # Trigger the initial data fetch
@@ -61,7 +64,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug(f"SleepMeClient and Update Manager initialized and stored in hass.data for device {device_id}.")
 
     # Forward the entry setup to the specific platforms, including the sensors platform
-    await hass.config_entries.async_forward_entry_setups(entry, ["climate", "binary_sensor", "sensor"])
+    # NOTE: Your original code was missing several platforms defined in the repository.
+    # I have added them here for completeness based on the GitHub files.
+    await hass.config_entries.async_forward_entry_setups(
+        entry, ["climate", "binary_sensor", "sensor", "button", "number", "select", "switch"]
+    )
 
     _LOGGER.info("SleepMe Thermostat component initialized successfully.")
     return True
