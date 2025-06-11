@@ -1,60 +1,73 @@
+# custom_components/sleepme_thermostat/update_manager.py
+
 import logging
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.core import HomeAssistant
 from datetime import timedelta
-from .sleepme import SleepMeClient
+from typing import Any
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .pysleepme import SleepMeClient, SleepMeClientError
 
 _LOGGER = logging.getLogger(__name__)
 
+# Define how often to poll the API
+UPDATE_INTERVAL_SECONDS = 20
+
 class SleepMeUpdateManager(DataUpdateCoordinator):
-    """Manages data updates for SleepMe devices."""
+    """Manages data updates and communication with the SleepMe API."""
 
-    def __init__(self, hass: HomeAssistant, api_url: str, token: str, device_id: str):
-        self.client = SleepMeClient(api_url, token, device_id)
-        self.device_id = device_id
-
-        # Initialize the last known good status as None
-        self._last_valid_status = None
-
-        # Set the update interval to 20 seconds
-        update_interval = timedelta(seconds=20)
+    def __init__(self, hass: HomeAssistant, client: SleepMeClient):
+        """Initialize the update manager."""
+        self.client = client
 
         super().__init__(
             hass,
             _LOGGER,
-            name=f"SleepMe Update Manager {device_id}",
-            update_interval=update_interval,
+            name=f"SleepMe Dock Pro {client.device_id}",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL_SECONDS),
         )
 
-    async def _async_update_data(self):
-        """Fetch the latest data from the SleepMe API."""
+    async def _async_update_data(self) -> dict[str, Any]:
+        """
+        Fetch the latest data from the SleepMe API.
+
+        This method is called by the DataUpdateCoordinator to refresh the data.
+        If it fails, it raises UpdateFailed to notify Home Assistant.
+        """
         try:
-            # Fetch device status from the API
+            # Fetch device status from the underlying client library
             device_status = await self.client.get_device_status()
 
-            # If the device status is empty, return the last valid status
+            # The API can sometimes return an empty response, which is a failure condition.
             if not device_status:
-                _LOGGER.warning(f"Using last valid status for device {self.device_id} due to empty or failed update.")
-                return self._last_valid_status or {
-                    "status": {},
-                    "control": {},
-                    "about": {},
-                }
+                _LOGGER.debug(
+                    "Failed to update device %s: API returned an empty response",
+                    self.client.device_id,
+                )
+                raise UpdateFailed("API returned an empty response.")
 
-            # Cache the current valid status
-            self._last_valid_status = {
+            # If successful, return the structured data.
+            # The coordinator will store this in `self.data` for all entities to use.
+            return {
                 "status": device_status.get("status", {}),
                 "control": device_status.get("control", {}),
                 "about": device_status.get("about", {}),
             }
 
-            return self._last_valid_status
-
-        except Exception as e:
-            _LOGGER.error(f"Error updating device data for {self.device_id}: {e}")
-            # If an error occurs, return the last valid status
-            return self._last_valid_status or {
-                "status": {},
-                "control": {},
-                "about": {},
-            }
+        except SleepMeClientError as err:
+            # Catch specific errors from our client library.
+            # This allows for more granular error handling if needed in the future.
+            _LOGGER.warning(
+                "Failed to update device %s: %s", self.client.device_id, err
+            )
+            raise UpdateFailed(f"Error communicating with SleepMe API: {err}") from err
+            
+        except Exception as err:
+            # Catch any other unexpected exceptions.
+            _LOGGER.error(
+                "An unexpected error occurred while updating device %s: %s",
+                self.client.device_id,
+                err,
+            )
+            raise UpdateFailed(f"An unexpected error occurred: {err}") from err
