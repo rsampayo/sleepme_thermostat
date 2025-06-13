@@ -3,11 +3,13 @@ from typing import Any
 
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    ATTR_TEMPERATURE,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import TEMP_CELSIUS
+from homeassistant.const import (
+    ATTR_TEMPERATURE,
+    TEMP_CELSIUS,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -36,7 +38,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the SleepMe climate entities."""
     device_id = config_entry.data.get("device_id")
-    device_display_name = config_entry.data.get("device_display_name")
+    device_display_name = config_entry.data.get("display_name")
     update_manager = hass.data[DOMAIN][f"{device_id}_update_manager"]
     client = hass.data[DOMAIN]["sleepme_controller"]
     device_info_data = hass.data[DOMAIN]["device_info"]
@@ -91,7 +93,7 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
             current_temp = status.get("current_temperature_c")
             if set_temp is not None and current_temp is not None:
                 return HVACMode.COOL if set_temp < current_temp else HVACMode.HEAT
-            return HVACMode.COOL
+            return HVACMode.COOL  
         return HVACMode.OFF
 
     @property
@@ -109,7 +111,7 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
                 if set_temp > current_temp:
                     return HVAC_ACTION_HEATING
                 return HVAC_ACTION_IDLE
-            return HVAC_ACTION_COOLING
+            return HVAC_ACTION_COOLING 
         return HVAC_ACTION_OFF
 
     @property

@@ -4,7 +4,7 @@ from typing import Any, Dict
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_TOKEN
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import aiohttp_client
 
 from .const import DEFAULT_API_URL, DOMAIN
@@ -29,7 +29,7 @@ class SleepMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self.api_token = user_input[CONF_API_TOKEN]
             try:
-                client = SleepMeClient(DEFAULT_API_URL, self.api_token, None)
+                client = SleepMeClient(aiohttp_client.async_get_clientsession(self.hass), DEFAULT_API_URL, self.api_token, None)
                 all_devices = await client.get_all_devices()
                 if not all_devices:
                     errors["base"] = "no_devices_found"
@@ -67,7 +67,7 @@ class SleepMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
-                title=device_name, 
+                title=device_name,
                 data={
                     "api_url": DEFAULT_API_URL,
                     "api_token": self.api_token,

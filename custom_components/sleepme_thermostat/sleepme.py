@@ -1,4 +1,5 @@
 import logging
+import aiohttp
 from .sleepme_api import SleepMeAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -7,9 +8,9 @@ _LOGGER = logging.getLogger(__name__)
 class SleepMeClient:
     """A client for interacting with SleepMe devices."""
 
-    def __init__(self, api_url, token, device_id):
+    def __init__(self, session: aiohttp.ClientSession, api_url, token, device_id):
         """Initialize the client."""
-        self._api = SleepMeAPI(api_url, token, device_id)
+        self._api = SleepMeAPI(session, api_url, token, device_id)
         self.device_id = device_id
 
     async def get_all_devices(self):

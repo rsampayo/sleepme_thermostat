@@ -1,6 +1,7 @@
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import aiohttp_client
 from .sleepme import SleepMeClient
 from .update_manager import SleepMeUpdateManager
 from .const import DOMAIN
@@ -23,11 +24,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api_token = entry.data.get("api_token")
     device_id = entry.data.get("device_id")
 
-    # Retrieve the additional device information
     firmware_version = entry.data.get("firmware_version")
     mac_address = entry.data.get("mac_address")
     model = entry.data.get("model")
     serial_number = entry.data.get("serial_number")
+    display_name = entry.data.get("display_name")
 
     _LOGGER.debug(f"API URL: {api_url}")
     _LOGGER.debug(f"API Token: {api_token}")
@@ -37,10 +38,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("API token or device ID is missing from configuration.")
         return False
 
-    sleepme_controller = SleepMeClient(api_url, api_token, device_id)
+    session = aiohttp_client.async_get_clientsession(hass)
+    sleepme_controller = SleepMeClient(session, api_url, api_token, device_id)
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
     update_manager = SleepMeUpdateManager(hass, sleepme_controller)
+    
     hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
 
     await update_manager.async_config_entry_first_refresh()
@@ -50,6 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "mac_address": mac_address,
         "model": model,
         "serial_number": serial_number,
+        "display_name": display_name 
     }
 
     _LOGGER.debug(f"SleepMeClient and Update Manager initialized for device {device_id}.")
