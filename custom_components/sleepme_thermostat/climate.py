@@ -8,7 +8,7 @@ from homeassistant.components.climate.const import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
-    TEMP_CELSIUS,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -67,9 +67,10 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
         super().__init__(coordinator)
         self.client = client
         self._device_id = device_id
+        
         self._attr_name = device_display_name
         self._attr_unique_id = f"{device_id}_climate"
-        self._attr_temperature_unit = TEMP_CELSIUS
+        self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         self._attr_hvac_modes = HVAC_MODES
         self._attr_supported_features = SUPPORT_FLAGS
         self._attr_preset_modes = [PRESET_PRECONDITIONING]
@@ -93,7 +94,7 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
             current_temp = status.get("current_temperature_c")
             if set_temp is not None and current_temp is not None:
                 return HVACMode.COOL if set_temp < current_temp else HVACMode.HEAT
-            return HVACMode.COOL  
+            return HVACMode.COOL
         return HVACMode.OFF
 
     @property
@@ -111,7 +112,7 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
                 if set_temp > current_temp:
                     return HVAC_ACTION_HEATING
                 return HVAC_ACTION_IDLE
-            return HVAC_ACTION_COOLING 
+            return HVAC_ACTION_COOLING
         return HVAC_ACTION_OFF
 
     @property

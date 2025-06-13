@@ -8,7 +8,8 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["climate", "binary_sensor", "sensor", "button", "number", "select", "switch"]
+PLATFORMS = ["climate", "binary_sensor", "sensor", "switch"]
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the SleepMe Thermostat component."""
@@ -43,7 +44,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
     update_manager = SleepMeUpdateManager(hass, sleepme_controller)
-    
     hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
 
     await update_manager.async_config_entry_first_refresh()
@@ -53,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "mac_address": mac_address,
         "model": model,
         "serial_number": serial_number,
-        "display_name": display_name 
+        "display_name": display_name
     }
 
     _LOGGER.debug(f"SleepMeClient and Update Manager initialized for device {device_id}.")
