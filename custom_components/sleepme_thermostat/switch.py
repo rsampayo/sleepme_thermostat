@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.event import async_call_later
 
 from .const import DOMAIN, MANUFACTURER, SCHEDULE_SWITCH_NAME
 from .sleepme import SleepMeClient
@@ -13,6 +14,7 @@ from .update_manager import SleepMeUpdateManager
 
 _LOGGER = logging.getLogger(__name__)
 
+COMMAND_REFRESH_DELAY_S = 5 
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -21,7 +23,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the SleepMe switch entities."""
     device_id = config_entry.data.get("device_id")
-    device_display_name = config_entry.data.get("device_display_name")
+    device_display_name = config_entry.data.get("display_name")
     update_manager = hass.data[DOMAIN][f"{device_id}_update_manager"]
     client = hass.data[DOMAIN]["sleepme_controller"]
     device_info_data = hass.data[DOMAIN]["device_info"]
@@ -73,7 +75,7 @@ class SleepMeScheduleSwitch(CoordinatorEntity, SwitchEntity):
             control = self.coordinator.data.get("control", {})
             control["has_schedule_enabled"] = True
             self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
+            async_call_later(self.hass, COMMAND_REFRESH_DELAY_S, self.coordinator.async_request_refresh)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the device schedule off."""
@@ -81,4 +83,4 @@ class SleepMeScheduleSwitch(CoordinatorEntity, SwitchEntity):
             control = self.coordinator.data.get("control", {})
             control["has_schedule_enabled"] = False
             self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
+            async_call_later(self.hass, COMMAND_REFRESH_DELAY_S, self.coordinator.async_request_refresh)

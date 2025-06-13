@@ -2,17 +2,13 @@ import logging
 from typing import Any
 
 from homeassistant.components.climate import ClimateEntity
-from homeassistant.components.climate.const import (
-    HVACMode,
-)
+from homeassistant.components.climate.const import HVACMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    ATTR_TEMPERATURE,
-    UnitOfTemperature,
-)
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
     DOMAIN,
@@ -30,6 +26,7 @@ from .update_manager import SleepMeUpdateManager
 
 _LOGGER = logging.getLogger(__name__)
 
+COMMAND_REFRESH_DELAY_S = 5
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -145,7 +142,7 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
             status = self.coordinator.data.get("status", {})
             status["set_temperature_c"] = temperature_c
             self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
+            async_call_later(self.hass, COMMAND_REFRESH_DELAY_S, self.coordinator.async_request_refresh)
 
     async def async_set_hvac_mode(self, hvac_mode: str) -> None:
         """Set a new HVAC mode."""
@@ -155,4 +152,4 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
             status = self.coordinator.data.get("status", {})
             status["thermal_control_status"] = "active" if is_active else "standby"
             self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
+            async_call_later(self.hass, COMMAND_REFRESH_DELAY_S, self.coordinator.async_request_refresh)

@@ -1,70 +1,63 @@
 import logging
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.helpers.entity import EntityCategory
+
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN
+
+from .const import DOMAIN, MANUFACTURER
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up SleepMe Thermostat binary sensors from a config entry."""
-    device_id = entry.data.get("device_id")
-    name = entry.data.get("name")
-    coordinator = hass.data[DOMAIN][f"{device_id}_update_manager"]
+WATER_LOW_THRESHOLD = 20
 
-    _LOGGER.debug(f"[Device {device_id}] Setting up binary sensor platform from config entry.")
 
-    thermostat = hass.data[DOMAIN].get(device_id)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the SleepMe binary sensor entities."""
+    device_id = config_entry.data.get("device_id")
+    device_display_name = config_entry.data.get("display_name")
+    update_manager = hass.data[DOMAIN][f"{device_id}_update_manager"]
+    device_info_data = hass.data[DOMAIN]["device_info"]
 
-    if thermostat is None:
-        _LOGGER.error(f"[Device {device_id}] Thermostat entity not found!")
-        hass.components.persistent_notification.create(
-            f"The SleepMe Thermostat entity for device {device_id} was not found. Please check the configuration.",
-            title="SleepMe Thermostat Error"
-        )
-        return
+    async_add_entities(
+        [
+            SleepMeWaterLevelBinarySensor(
+                update_manager, device_id, device_display_name, device_info_data
+            )
+        ]
+    )
 
-    # Create the sensors and add them
-    water_level_sensor = WaterLevelLowSensor(coordinator, thermostat, device_id, name)
-    connected_sensor = DeviceConnectedBinarySensor(coordinator, thermostat, device_id, name)
 
-    async_add_entities([water_level_sensor, connected_sensor])
+class SleepMeWaterLevelBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Representation of a SleepMe water level binary sensor."""
 
-class WaterLevelLowSensor(CoordinatorEntity, BinarySensorEntity):
-    """Representation of a binary sensor that indicates if the water level is low."""
-
-    def __init__(self, coordinator, thermostat, device_id, name):
+    def __init__(self, coordinator, device_id, device_display_name, device_info_data):
+        """Initialize the binary sensor."""
         super().__init__(coordinator)
-        self._thermostat = thermostat
         self._device_id = device_id
-        self._attr_name = f"Dock Pro {name} Water Level"
-        self._attr_device_class = "problem"
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_water_low"
+        self._attr_name = f"{device_display_name} Water Low"
+        self._attr_unique_id = f"{device_id}_water_low"
+        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-        # Reuse the device info from the thermostat entity
-        self._attr_device_info = thermostat.device_info
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, self._device_id)},
+            "name": device_display_name,
+            "manufacturer": MANUFACTURER,
+            "model": device_info_data.get("model"),
+            "sw_version": device_info_data.get("firmware_version"),
+        }
 
     @property
-    def is_on(self):
+    def is_on(self) -> bool:
         """Return true if the water level is low."""
-        return self.coordinator.data["status"].get("is_water_low")
-
-class DeviceConnectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Representation of a binary sensor that indicates if the device is connected."""
-
-    def __init__(self, coordinator, thermostat, device_id, name):
-        super().__init__(coordinator)
-        self._thermostat = thermostat
-        self._device_id = device_id
-        self._attr_name = f"Dock Pro {name} Connected"
-        self._attr_device_class = "connectivity"
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_connected"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-
-        # Reuse the device info from the thermostat entity
-        self._attr_device_info = thermostat.device_info
-
-    @property
-    def is_on(self):
-        """Return true if the device is connected."""
-        return self.coordinator.data["status"].get("is_connected")
+        status = self.coordinator.data.get("status", {})
+        water_level = status.get("water_level_percent", 100)
+        return water_level < WATER_LOW_THRESHOLD
