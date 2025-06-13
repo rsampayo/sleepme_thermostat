@@ -35,13 +35,13 @@ class SleepMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "no_devices_found"
                 else:
                     self.devices = {
-                        dev["display_name"]: {
+                        dev["name"]: {
                             "device_id": dev["id"],
                             "firmware_version": dev.get("firmware_version", "N/A"),
                             "mac_address": dev.get("mac_address", "N/A"),
                             "model": dev.get("model", "N/A"),
                             "serial_number": dev.get("serial_number", "N/A"),
-                            "display_name": dev.get("display_name", "SleepMe Device"),
+                            "display_name": dev.get("name", "SleepMe Device"),
                         }
                         for dev in all_devices
                     }
@@ -59,15 +59,15 @@ class SleepMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_select_device(self, user_input=None):
         """Handle device selection."""
         if user_input is not None:
-            device_display_name = user_input["device_display_name"]
-            device_info = self.devices[device_display_name]
+            device_name = user_input["device_name"]
+            device_info = self.devices[device_name]
             device_id = device_info["device_id"]
-
+            
             await self.async_set_unique_id(device_id)
             self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
-                title=device_display_name,
+                title=device_name, 
                 data={
                     "api_url": DEFAULT_API_URL,
                     "api_token": self.api_token,
@@ -79,6 +79,6 @@ class SleepMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="select_device",
             data_schema=vol.Schema(
-                {vol.Required("device_display_name"): vol.In(list(self.devices.keys()))}
+                {vol.Required("device_name"): vol.In(list(self.devices.keys()))}
             ),
         )

@@ -12,6 +12,10 @@ class SleepMeClient:
         self._api = SleepMeAPI(api_url, token, device_id)
         self.device_id = device_id
 
+    async def get_all_devices(self):
+        """Get a list of all devices from the API."""
+        return await self._api.get_all_devices()
+
     async def get_device_status(self):
         """Get the full status of the device."""
         return await self._api.get_device_status()

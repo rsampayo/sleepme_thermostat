@@ -1,7 +1,6 @@
 from homeassistant.components.climate.const import (
-    HVACMode,  # <-- Import the HVACMode enum
-    SUPPORT_PRESET_MODE,
-    SUPPORT_TARGET_TEMPERATURE,
+    ClimateEntityFeature,
+    HVACMode,
 )
 
 # Configuration Constants
@@ -20,14 +19,16 @@ HVAC_ACTION_COOLING = "cooling"
 HVAC_ACTION_HEATING = "heating"
 HVAC_ACTION_IDLE = "idle"
 HVAC_ACTION_OFF = "off"
-# --- THIS IS THE CORRECTED LINE ---
 HVAC_MODES = [HVACMode.COOL, HVACMode.HEAT, HVACMode.OFF]
 
 # Preset Mode Constants
 PRESET_PRECONDITIONING = "Preconditioning"
 
+
 # Supported Features
-SUPPORT_FLAGS = SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE
+SUPPORT_FLAGS = (
+    ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
+)
 
 # Entity Naming Constants
 SCHEDULE_SWITCH_NAME = "Device Schedule"
