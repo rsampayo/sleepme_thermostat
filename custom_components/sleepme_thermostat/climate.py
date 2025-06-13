@@ -4,9 +4,7 @@ from typing import Any
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     ATTR_TEMPERATURE,
-    HVAC_MODE_COOL,
-    HVAC_MODE_HEAT,
-    HVAC_MODE_OFF
+    HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import TEMP_CELSIUS
@@ -92,9 +90,9 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
             set_temp = status.get("set_temperature_c")
             current_temp = status.get("current_temperature_c")
             if set_temp is not None and current_temp is not None:
-                return HVAC_MODE_COOL if set_temp < current_temp else HVAC_MODE_HEAT
-            return HVAC_MODE_COOL
-        return HVAC_MODE_OFF
+                return HVACMode.COOL if set_temp < current_temp else HVACMode.HEAT
+            return HVACMode.COOL
+        return HVACMode.OFF
 
     @property
     def hvac_action(self):
@@ -148,7 +146,7 @@ class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: str) -> None:
         """Set a new HVAC mode."""
-        is_active = hvac_mode in [HVAC_MODE_COOL, HVAC_MODE_HEAT]
+        is_active = hvac_mode in [HVACMode.COOL, HVACMode.HEAT]
 
         if await self.client.set_power_status(is_active):
             status = self.coordinator.data.get("status", {})

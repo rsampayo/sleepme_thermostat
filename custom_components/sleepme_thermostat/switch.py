@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, SCHEDULE_SWITCH_NAME
-from .pysleepme import SleepMeClient
+from .sleepme import SleepMeClient
 from .update_manager import SleepMeUpdateManager
 
 _LOGGER = logging.getLogger(__name__)
