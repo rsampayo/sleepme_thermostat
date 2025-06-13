@@ -1,136 +1,156 @@
 import logging
+from typing import Any
+
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    HVACMode,
-    ClimateEntityFeature,
+    ATTR_TEMPERATURE,
+    CURRENT_TEMP_COOL,
+    CURRENT_TEMP_HEAT,
 )
-from homeassistant.const import UnitOfTemperature
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import TEMP_CELSIUS
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN
+
+from .const import (
+    DOMAIN,
+    HVAC_ACTION_COOLING,
+    HVAC_ACTION_HEATING,
+    HVAC_ACTION_IDLE,
+    HVAC_ACTION_OFF,
+    HVAC_MODES,
+    MANUFACTURER,
+    PRESET_PRECONDITIONING,
+    SUPPORT_FLAGS,
+)
+from .pysleepme import SleepMeClient
+from .update_manager import SleepMeUpdateManager
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up SleepMe Thermostat climate entity from a config entry."""
-    device_id = entry.data.get("device_id")
-    name = entry.data.get("name")
-    coordinator = hass.data[DOMAIN][f"{device_id}_update_manager"]
 
-    _LOGGER.debug(f"[Device {device_id}] Setting up SleepMeThermostat entity with name: {name}")
-    thermostat = SleepMeThermostat(coordinator, device_id, name, entry.data)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the SleepMe climate entities."""
+    device_id = config_entry.data.get("device_id")
+    device_display_name = config_entry.data.get("device_display_name")
+    update_manager = hass.data[DOMAIN][f"{device_id}_update_manager"]
+    client = hass.data[DOMAIN]["sleepme_controller"]
+    device_info_data = hass.data[DOMAIN]["device_info"]
 
-    hass.data[DOMAIN][device_id] = thermostat
-    async_add_entities([thermostat])
+    async_add_entities(
+        [
+            SleepMeClimateEntity(
+                update_manager, client, device_id, device_display_name, device_info_data
+            )
+        ]
+    )
 
-class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
-    def __init__(self, coordinator, device_id, name, device_info):
+
+class SleepMeClimateEntity(CoordinatorEntity, ClimateEntity):
+    """Representation of a SleepMe climate entity."""
+
+    def __init__(
+        self,
+        coordinator: SleepMeUpdateManager,
+        client: SleepMeClient,
+        device_id: str,
+        device_display_name: str,
+        device_info_data: dict,
+    ):
+        """Initialize the climate entity."""
         super().__init__(coordinator)
-        self._name = f"Dock Pro {name}"
+        self.client = client
         self._device_id = device_id
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_thermostat"
-        self._target_temperature = None
+        self._attr_name = device_display_name
+        self._attr_unique_id = f"{device_id}_climate"
+        self._attr_temperature_unit = TEMP_CELSIUS
+        self._attr_hvac_modes = HVAC_MODES
+        self._attr_supported_features = SUPPORT_FLAGS
+        self._attr_preset_modes = [PRESET_PRECONDITIONING]
 
-        # Set up device info attributes
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
-            "name": self._name,
-            "manufacturer": "SleepMe",
-            "model": device_info.get("model"),
-            "sw_version": device_info.get("firmware_version"),
-            "connections": {("mac", device_info.get("mac_address"))},
-            "serial_number": device_info.get("serial_number"),
+            "name": self._attr_name,
+            "manufacturer": MANUFACTURER,
+            "model": device_info_data.get("model"),
+            "sw_version": device_info_data.get("firmware_version"),
         }
-
-    @property
-    def min_temp(self):
-        return 12.5
-
-    @property
-    def max_temp(self):
-        return 46.5
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def temperature_unit(self):
-        return UnitOfTemperature.CELSIUS
-
-    @property
-    def current_temperature(self):
-        return self.coordinator.data["status"].get("water_temperature_c")
-
-    @property
-    def target_temperature(self):
-        return self._sanitize_temperature(self.coordinator.data["control"].get("set_temperature_c"))
 
     @property
     def hvac_mode(self):
-        return self._determine_hvac_mode(self.coordinator.data["control"].get("thermal_control_status"))
+        """Return the current HVAC mode."""
+        status = self.coordinator.data.get("status", {})
+        thermal_status = status.get("thermal_control_status")
+
+        if thermal_status in ["active", "preconditioning"]:
+            set_temp = status.get("set_temperature_c")
+            current_temp = status.get("current_temperature_c")
+            if set_temp is not None and current_temp is not None:
+                return CURRENT_TEMP_COOL if set_temp < current_temp else CURRENT_TEMP_HEAT
+            return CURRENT_TEMP_COOL
+        return HVAC_MODE_OFF
 
     @property
-    def hvac_modes(self):
-        return [HVACMode.OFF, HVACMode.AUTO]
+    def hvac_action(self):
+        """Return the current HVAC action."""
+        status = self.coordinator.data.get("status", {})
+        thermal_status = status.get("thermal_control_status")
+
+        if thermal_status in ["active", "preconditioning"]:
+            set_temp = status.get("set_temperature_c")
+            current_temp = status.get("current_temperature_c")
+            if set_temp is not None and current_temp is not None:
+                if set_temp < current_temp:
+                    return HVAC_ACTION_COOLING
+                if set_temp > current_temp:
+                    return HVAC_ACTION_HEATING
+                return HVAC_ACTION_IDLE
+            return HVAC_ACTION_COOLING
+        return HVAC_ACTION_OFF
 
     @property
-    def supported_features(self):
-        return (
-            ClimateEntityFeature.TARGET_TEMPERATURE |
-            ClimateEntityFeature.TURN_ON |
-            ClimateEntityFeature.TURN_OFF
-        )
+    def preset_mode(self):
+        """Return the current preset mode."""
+        status = self.coordinator.data.get("status", {})
+        if status.get("thermal_control_status") == "preconditioning":
+            return PRESET_PRECONDITIONING
+        return None
 
     @property
-    def extra_state_attributes(self):
-        return {
-            "is_water_low": self.coordinator.data["status"].get("is_water_low"),
-            "is_connected": self.coordinator.data["status"].get("is_connected"),
-        }
+    def current_temperature(self):
+        """Return the current temperature."""
+        status = self.coordinator.data.get("status", {})
+        return status.get("current_temperature_c")
 
     @property
-    def available(self):
-        """Return True if the device is connected, False otherwise."""
-        return self.coordinator.data["status"].get("is_connected", False)
+    def target_temperature(self):
+        """Return the target temperature."""
+        status = self.coordinator.data.get("status", {})
+        return status.get("set_temperature_c")
 
-    async def async_set_temperature(self, **kwargs):
-        target_temp = kwargs.get("temperature")
-        if target_temp is None:
-            raise ValueError("Temperature is required")
-
-        if target_temp < self.min_temp or target_temp > self.max_temp:
-            _LOGGER.warning(f"[Device {self._device_id}] Temperature {target_temp}C is out of range.")
+    async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Set a new target temperature."""
+        temperature_c = kwargs.get(ATTR_TEMPERATURE)
+        if temperature_c is None:
             return
 
-        _LOGGER.info(f"[Device {self._device_id}] Setting target temperature to {target_temp}C")
-        await self.coordinator.client.set_temp_level(target_temp)
+        if await self.client.set_temperature(temperature_c):
+            status = self.coordinator.data.get("status", {})
+            status["set_temperature_c"] = temperature_c
+            self.async_write_ha_state()
+            await self.coordinator.async_request_refresh()
 
-        # Update internal state immediately
-        self.coordinator.data["control"]["set_temperature_c"] = target_temp
-        self.async_write_ha_state()
+    async def async_set_hvac_mode(self, hvac_mode: str) -> None:
+        """Set a new HVAC mode."""
+        is_active = hvac_mode in [CURRENT_TEMP_COOL, CURRENT_TEMP_HEAT]
 
-    async def async_set_hvac_mode(self, hvac_mode):
-        if hvac_mode == HVACMode.AUTO:
-            await self.coordinator.client.set_device_status("active")
-        elif hvac_mode == HVACMode.OFF:
-            await self.coordinator.client.set_device_status("standby")
-
-        # Update internal state immediately
-        self.coordinator.data["control"]["thermal_control_status"] = "active" if hvac_mode == HVACMode.AUTO else "standby"
-        self.async_write_ha_state()
-
-    def _sanitize_temperature(self, temp):
-        """Sanitize temperature values returned by the API."""
-        if temp == -1:
-            _LOGGER.warning(f"[Device {self._device_id}] API returned -1, setting temperature to minimum allowed {self.min_temp}C.")
-            return self.min_temp
-        elif temp == 999:
-            _LOGGER.warning(f"[Device {self._device_id}] API returned 999, setting temperature to maximum allowed {self.max_temp}C.")
-            return self.max_temp
-        return temp
-
-    def _determine_hvac_mode(self, thermal_control_status):
-        """Determine the HVAC mode based on the device's thermal control status."""
-        if thermal_control_status == "active":
-            return HVACMode.AUTO
-        return HVACMode.OFF
+        if await self.client.set_power_status(is_active):
+            status = self.coordinator.data.get("status", {})
+            status["thermal_control_status"] = "active" if is_active else "standby"
+            self.async_write_ha_state()
+            await self.coordinator.async_request_refresh()

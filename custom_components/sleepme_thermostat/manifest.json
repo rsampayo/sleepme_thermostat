@@ -8,6 +8,6 @@
   "integration_type": "device",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/rsampayo/sleepme_thermostat/issues",
-  "requirements": [],
-  "version": "3.0.0"
+  "requirements": ["aiohttp"],
+  "version": "3.0.1"
 }

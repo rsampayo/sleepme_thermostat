@@ -3,84 +3,59 @@ from .sleepme_api import SleepMeAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-def round_half_up(n):
-    """Round a number to the nearest .0 or .5."""
-    return round(n * 2) / 2
 
 class SleepMeClient:
-    def __init__(self, api_url: str, token: str, device_id: str = None):
-        self.api_url = api_url
-        self.token = token
+    """A client for interacting with SleepMe devices."""
+
+    def __init__(self, api_url, token, device_id):
+        """Initialize the client."""
+        self._api = SleepMeAPI(api_url, token, device_id)
         self.device_id = device_id
-        self.api = SleepMeAPI(api_url, token)
-        _LOGGER.debug(f"[Device {self.device_id}] Initialized SleepMeClient with API URL: {self.api_url}")
 
-    async def set_temp_level(self, temp_c: float, retries: int = 2):
-        """Set the temperature level in Celsius and provide feedback, with retry logic."""
-        temp_c = round_half_up(temp_c)
-        endpoint = f"devices/{self.device_id}"
-        data = {"set_temperature_c": temp_c}
-        _LOGGER.debug(f"[Device {self.device_id}] Sending request to set temperature to {temp_c}C")
+    async def get_device_status(self):
+        """Get the full status of the device."""
+        return await self._api.get_device_status()
 
-        response = await self.api.api_request("PATCH", endpoint, data=data, retries=retries)
+    async def set_temperature(self, temperature_c: float) -> bool:
+        """Set the target temperature of the device in Celsius."""
+        _LOGGER.debug(f"[Device {self.device_id}] Setting temperature to {temperature_c}C")
+        payload = {"setTemperatureC": temperature_c}
+        response = await self._api.patch_device_control(payload)
+        if response and response.get("set_temperature_c") == temperature_c:
+            return True
+        _LOGGER.warning(
+            f"[Device {self.device_id}] Temperature may not have been set to {temperature_c}C. Response: {response}"
+        )
+        return False
 
-        if not response:
-            _LOGGER.warning(f"Failed to set temperature to {temp_c}C for device {self.device_id}. Received empty response.")
-            return {}
+    async def set_power_status(self, is_active: bool) -> bool:
+        """Set the power status of the device."""
+        target_status = "active" if is_active else "standby"
+        _LOGGER.debug(f"[Device {self.device_id}] Setting power status to {target_status}")
+        payload = {"thermalControlStatus": target_status}
+        response = await self._api.patch_device_control(payload)
+        if response and response.get("thermal_control_status") == target_status:
+            return True
+        _LOGGER.warning(
+            f"[Device {self.device_id}] Device status may not have been set to {target_status}. Response: {response}"
+        )
+        return False
 
-        if response.get("set_temperature_c") == temp_c:
-            _LOGGER.info(f"[Device {self.device_id}] Temperature successfully set to {temp_c}C.")
-        else:
-            _LOGGER.warning(f"[Device {self.device_id}] Temperature may not have been set to {temp_c}C. Response: {response}")
+    async def set_schedule_enabled(self, enabled: bool) -> bool:
+        """Enable or disable the device's internal schedule."""
+        _LOGGER.debug(f"[Device {self.device_id}] Setting schedule enabled to {enabled}")
+        payload = {"hasScheduleEnabled": enabled}
+        response = await self._api.patch_device_control(payload)
+        if response and response.get("has_schedule_enabled") == enabled:
+            return True
+        _LOGGER.warning(
+            f"[Device {self.device_id}] Schedule enabled may not have been set to {enabled}. Response: {response}"
+        )
+        return False
 
-        return response
-
-    async def set_device_status(self, status: str, retries: int = 2):
-        """Set the device status to either 'active' (on) or 'standby' (off), with retry logic."""
-        if status not in ["active", "standby"]:
-            raise ValueError("Status must be either 'active' or 'standby'.")
-
-        endpoint = f"devices/{self.device_id}"
-        data = {"thermal_control_status": status}
-        _LOGGER.debug(f"[Device {self.device_id}] Sending request to set device status to {status}")
-
-        response = await self.api.api_request("PATCH", endpoint, data=data, retries=retries)
-
-        if not response:
-            _LOGGER.warning(f"Failed to set device status to {status} for device {self.device_id}. Received empty response.")
-            return {}
-
-        if response.get("thermal_control_status") == status:
-            _LOGGER.info(f"[Device {self.device_id}] Device status successfully set to {status}.")
-        else:
-            _LOGGER.warning(f"[Device {self.device_id}] Device status may not have been set to {status}. Response: {response}")
-
-        return response
-
-    async def get_claimed_devices(self, retries: int = 1):
-        """Return a list of claimed devices for the given token, with retry logic."""
-        endpoint = "devices"
-        _LOGGER.debug(f"[Device {self.device_id}] Fetching claimed devices from {endpoint}")
-        
-        response = await self.api.api_request("GET", endpoint, retries=retries)
-
-        if isinstance(response, list):
-            _LOGGER.info(f"Successfully fetched claimed devices: {response}")
-            return response
-
-        _LOGGER.error(f"Unexpected response format for claimed devices: {response}")
-        return []
-
-    async def get_device_status(self, retries: int = 0):
-        """Retrieve the device status, with retry logic."""
-        endpoint = f"devices/{self.device_id}"
-        _LOGGER.debug(f"[Device {self.device_id}] Fetching device status from {endpoint}")
-        
-        response = await self.api.api_request("GET", endpoint, retries=retries)
-        
-        if isinstance(response, dict):
-            _LOGGER.debug(f"[Device {self.device_id}] Device status: {response}")
-            return response
-        
-        _LOGGER.error(f"Failed to fetch device status for {self.device_id}. Response: {response}")
-        return {}
+    async def set_display_brightness(self, brightness_percent: int) -> bool:
+        """Set the display brightness."""
+        _LOGGER.debug(f"[Device {self.device_id}] Setting brightness to {brightness_percent}%")
+        payload = {"brightnessLevel": brightness_percent}
+        response = await self._api.patch_device_control(payload)
+        return response is not None

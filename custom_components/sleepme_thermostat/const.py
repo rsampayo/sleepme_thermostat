@@ -1,9 +1,29 @@
-APP_API_URL = "https://api.developer.sleep.me/v1"
+from homeassistant.components.climate.const import (
+    HVAC_MODE_COOL,
+    HVAC_MODE_HEAT,
+    HVAC_MODE_OFF,
+    SUPPORT_PRESET_MODE,
+    SUPPORT_TARGET_TEMPERATURE,
+)
 
-DEFAULT_API_HEADERS = {
-    "Content-Type": "application/json"
-}
-
-API_URL = APP_API_URL  # Optional: Alias for APP_API_URL for consistency
 
 DOMAIN = "sleepme_thermostat"
+MANUFACTURER = "Sleepme Inc."
+DEFAULT_API_URL = "https://api.developer.sleep.me/v1"
+
+DEFAULT_POLLING_INTERVAL_S = 60 
+DEFAULT_TIMEOUT_S = 30
+DEFAULT_RETRY_COUNT = 3
+DEFAULT_RETRY_BACKOFF_FACTOR = 30
+
+HVAC_ACTION_COOLING = "cooling"
+HVAC_ACTION_HEATING = "heating"
+HVAC_ACTION_IDLE = "idle"
+HVAC_ACTION_OFF = "off"
+HVAC_MODES = [HVAC_MODE_COOL, HVAC_MODE_HEAT, HVAC_MODE_OFF]
+
+PRESET_PRECONDITIONING = "Preconditioning"
+
+SUPPORT_FLAGS = SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE
+
+SCHEDULE_SWITCH_NAME = "Device Schedule"

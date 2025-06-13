@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SleepMe Thermostat Setup",
+        "description": "Enter your SleepMe API token. You can obtain this from the SleepMe developer portal.",
+        "data": {
+          "api_token": "API Token"
+        }
+      },
+      "select_device": {
+        "title": "Select Your Device",
+        "description": "Choose the SleepMe device you want to add to Home Assistant.",
+        "data": {
+          "device_id": "Device"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the SleepMe API. Please check your token and network connection.",
+      "invalid_auth": "Invalid authentication. Please check your API token.",
+      "no_devices_found": "No SleepMe devices found for this account."
+    },
+    "abort": {
+      "already_configured": "This SleepMe device is already configured."
+    }
+  },
+  "entity": {
+    "switch": {
+      "device_schedule": {
+        "name": "Device Schedule"
+      }
+    }
+  }
+}
