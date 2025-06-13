@@ -1,7 +1,7 @@
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from .pysleepme import SleepMeClient
+from .sleepme import SleepMeClient
 from .update_manager import SleepMeUpdateManager
 from .const import DOMAIN
 
@@ -23,6 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api_token = entry.data.get("api_token")
     device_id = entry.data.get("device_id")
 
+    # Retrieve the additional device information
     firmware_version = entry.data.get("firmware_version")
     mac_address = entry.data.get("mac_address")
     model = entry.data.get("model")
@@ -39,7 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sleepme_controller = SleepMeClient(api_url, api_token, device_id)
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
-    update_manager = SleepMeUpdateManager(hass, api_url, api_token, device_id)
+    update_manager = SleepMeUpdateManager(hass, sleepme_controller)
     hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
 
     await update_manager.async_config_entry_first_refresh()

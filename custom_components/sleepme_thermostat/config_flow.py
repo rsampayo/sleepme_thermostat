@@ -1,132 +1,84 @@
 import logging
+from typing import Any, Dict
+
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.const import CONF_API_TOKEN
+from homeassistant.core import callback
+from homeassistant.helpers import aiohttp_client
+
+from .const import DEFAULT_API_URL, DOMAIN
 from .sleepme import SleepMeClient
-from .const import DOMAIN, API_URL
-from httpx import HTTPStatusError
 
 _LOGGER = logging.getLogger(__name__)
 
-class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+
+class SleepMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SleepMe Thermostat."""
 
-    VERSION = 3
+    VERSION = 1
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Initialize the config flow."""
-        self.api_token = ""
-        self.claimed_devices = []
+        self.api_token = None
+        self.devices = {}
 
-    @staticmethod
-    def _schema(api_token: str = "") -> vol.Schema:
-        """Return the schema for the current step."""
-        return vol.Schema({
-            vol.Required("api_token", default=api_token): str,
-        })
-
-    async def async_step_user(self, user_input=None) -> FlowResult:
+    async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
-
         if user_input is not None:
-            _LOGGER.debug(f"User input received: {user_input}")
-            self.api_token = user_input.get("api_token")
-
-            # Instantiate SleepMeClient to get the list of devices
-            client = SleepMeClient(API_URL, self.api_token)
-
+            self.api_token = user_input[CONF_API_TOKEN]
             try:
-                # Get the list of claimed devices
-                self.claimed_devices = await client.get_claimed_devices()
-                _LOGGER.debug(f"Claimed devices: {self.claimed_devices}")
-
-                if not self.claimed_devices:
+                client = SleepMeClient(DEFAULT_API_URL, self.api_token, None)
+                all_devices = await client.get_all_devices()
+                if not all_devices:
                     errors["base"] = "no_devices_found"
                 else:
-                    # Proceed to select device step
+                    self.devices = {
+                        dev["display_name"]: {
+                            "device_id": dev["id"],
+                            "firmware_version": dev.get("firmware_version", "N/A"),
+                            "mac_address": dev.get("mac_address", "N/A"),
+                            "model": dev.get("model", "N/A"),
+                            "serial_number": dev.get("serial_number", "N/A"),
+                            "display_name": dev.get("display_name", "SleepMe Device"),
+                        }
+                        for dev in all_devices
+                    }
                     return await self.async_step_select_device()
-
-            except ValueError as err:
-                # Check for specific error raised for invalid token
-                if str(err) == "invalid_token":
-                    _LOGGER.error(f"Invalid token error: {err}")
-                    errors["base"] = "invalid_token"
-                else:
-                    _LOGGER.error(f"Unexpected ValueError: {err}")
-                    errors["base"] = "cannot_connect"
-            except HTTPStatusError as e:
-                _LOGGER.error(f"HTTP error fetching claimed devices: {e}")
-                errors["base"] = "cannot_connect"
             except Exception as e:
-                _LOGGER.error(f"Unexpected error fetching claimed devices: {e}")
+                _LOGGER.error("Failed to connect to SleepMe API: %s", e)
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user",
-            data_schema=self._schema(self.api_token),
+            data_schema=vol.Schema({vol.Required(CONF_API_TOKEN): str}),
             errors=errors,
         )
 
-    async def async_step_select_device(self, user_input=None) -> FlowResult:
-        """Step 2: Select a device from the list of claimed devices."""
-        errors = {}
-
+    async def async_step_select_device(self, user_input=None):
+        """Handle device selection."""
         if user_input is not None:
-            _LOGGER.debug(f"Device selected: {user_input}")
+            device_display_name = user_input["device_display_name"]
+            device_info = self.devices[device_display_name]
+            device_id = device_info["device_id"]
 
-            # Retrieve the selected device name and ID
-            device_id = user_input["device_id"]
-            name = self.context["claimed_devices_dict"][device_id]
-
-            # Set a unique ID for the device configuration
             await self.async_set_unique_id(device_id)
             self._abort_if_unique_id_configured()
 
-            # Instantiate SleepMeClient to fetch device details
-            client = SleepMeClient(API_URL, self.api_token, device_id)
-
-            try:
-                # Fetch the device status, which now includes "about" information
-                device_status = await client.get_device_status()
-                _LOGGER.debug(f"Device status: {device_status}")
-
-                # Store device info in the entry data
-                return self.async_create_entry(
-                    title=f"Dock Pro {name}",
-                    data={
-                        "api_url": API_URL,
-                        "api_token": self.api_token,
-                        "device_id": device_id,
-                        "name": name,
-                        "firmware_version": device_status.get("about", {}).get("firmware_version"),
-                        "mac_address": device_status.get("about", {}).get("mac_address"),
-                        "model": device_status.get("about", {}).get("model"),
-                        "serial_number": device_status.get("about", {}).get("serial_number"),
-                    },
-                )
-
-            except Exception as e:
-                _LOGGER.error(f"Error fetching device status: {e}")
-                errors["base"] = "cannot_fetch_device_info"
-
-        # Prepare the selection form
-        if self.claimed_devices:
-            claimed_devices_dict = {device["id"]: device["name"] for device in self.claimed_devices}
-            self.context["claimed_devices_dict"] = claimed_devices_dict
-        else:
-            errors["base"] = "no_devices_found"
-
-        data_schema = vol.Schema({
-            vol.Required("device_id"): vol.In(self.context["claimed_devices_dict"])
-        })
+            return self.async_create_entry(
+                title=device_display_name,
+                data={
+                    "api_url": DEFAULT_API_URL,
+                    "api_token": self.api_token,
+                    "device_id": device_id,
+                    **device_info,
+                },
+            )
 
         return self.async_show_form(
             step_id="select_device",
-            data_schema=data_schema,
-            errors=errors
+            data_schema=vol.Schema(
+                {vol.Required("device_display_name"): vol.In(list(self.devices.keys()))}
+            ),
         )
-
-    async def async_step_import(self, user_input=None) -> FlowResult:
-        """Handle import from YAML."""
-        return await self.async_step_user(user_input)
