@@ -2,15 +2,17 @@ import asyncio
 import httpx
 import logging
 import time
+from homeassistant.helpers.httpx_client import get_async_client
+from homeassistant.core import HomeAssistant
 from collections import deque
 
 _LOGGER = logging.getLogger(__name__)
 
 class SleepMeAPI:
-    def __init__(self, api_url: str, token: str, max_requests_per_minute=9):
+    def __init__(self, hass: HomeAssistant, api_url: str, token: str, max_requests_per_minute=9):
         self.api_url = api_url
         self.token = token
-        self.client = httpx.AsyncClient()
+        self.client = get_async_client(hass)
         self.request_times = deque(maxlen=max_requests_per_minute)
         self.rate_limit_interval = 60  # seconds
 
