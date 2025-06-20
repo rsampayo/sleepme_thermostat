@@ -7,3 +7,11 @@ DEFAULT_API_HEADERS = {
 API_URL = APP_API_URL  # Optional: Alias for APP_API_URL for consistency
 
 DOMAIN = "sleepme_thermostat"
+
+PRESET_MAX_COOL = 'Max Cool'
+PRESET_MAX_HEAT = 'Max Heat'
+
+PRESET_TEMPERATURES = {
+    PRESET_MAX_COOL: -1,
+    PRESET_MAX_HEAT: 999
+}
