@@ -1,15 +1,23 @@
+import asyncio
 import logging
+from typing import Any, Awaitable, Callable
+
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode,
     ClimateEntityFeature,
     PRESET_NONE
 )
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfTemperature, ATTR_TEMPERATURE
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, PRESET_MAX_COOL, PRESET_MAX_HEAT, PRESET_TEMPERATURES
 
 _LOGGER = logging.getLogger(__name__)
+
+RETRY_ATTEMPTS = 3  # The number of times to try a command.
+POST_COMMAND_DELAY = 10  # Seconds to wait after a command before verifying.
+RETRY_DELAY = 127  # Seconds to wait after a failed attempt before retrying.
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up SleepMe Thermostat climate entity from a config entry."""
@@ -31,7 +39,6 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         self._attr_unique_id = f"{DOMAIN}_{device_id}_thermostat"
         self._previous_target_temperature = None
 
-        # Set up device info attributes
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
             "name": self._name,
@@ -41,6 +48,57 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             "connections": {("mac", device_info.get("mac_address"))},
             "serial_number": device_info.get("serial_number"),
         }
+
+    async def _async_api_command_with_retry(
+        self,
+        command_coroutine: Awaitable[Any],
+        verification_callable: Callable[[], bool],
+        command_description: str,
+    ) -> bool:
+        """
+        Execute an API command with a retry mechanism to handle rate limiting.
+        Returns True on success, False on failure.
+        """
+        for attempt in range(RETRY_ATTEMPTS):
+            _LOGGER.debug(
+                "Executing command '%s', attempt %d of %d",
+                command_description, attempt + 1, RETRY_ATTEMPTS
+            )
+            try:
+                await command_coroutine
+            except Exception as e:
+                _LOGGER.warning(
+                    "API command '%s' failed on attempt %d: %s",
+                    command_description, attempt + 1, e
+                )
+                if attempt < RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_DELAY)
+                continue
+
+            await asyncio.sleep(POST_COMMAND_DELAY)
+
+            await self.coordinator.async_request_refresh()
+
+            if verification_callable():
+                _LOGGER.info(
+                    "Command '%s' successfully verified after attempt %d.",
+                    command_description, attempt + 1
+                )
+                self.async_write_ha_state()
+                return True
+
+            _LOGGER.warning(
+                "Verification for '%s' failed on attempt %d. State not updated.",
+                command_description, attempt + 1
+            )
+            if attempt < RETRY_ATTEMPTS - 1:
+                await asyncio.sleep(RETRY_DELAY)
+
+        _LOGGER.error(
+            "Failed to execute and verify command '%s' after %d attempts.",
+            command_description, RETRY_ATTEMPTS
+        )
+        return False
 
     @property
     def min_temp(self):
@@ -74,11 +132,11 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
     def hvac_modes(self):
         return [HVACMode.OFF, HVACMode.AUTO]
 
-    @property 
+    @property
     def preset_modes(self):
         return [PRESET_NONE, PRESET_MAX_HEAT, PRESET_MAX_COOL]
 
-    @property 
+    @property
     def preset_mode(self):
         if self.hvac_mode == HVACMode.OFF:
             return PRESET_NONE
@@ -106,56 +164,65 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         return self.coordinator.data["status"].get("is_connected", False)
 
     async def async_set_temperature(self, **kwargs):
-        target_temp = kwargs.get("temperature")
+        """Set new target temperature."""
+        target_temp = kwargs.get(ATTR_TEMPERATURE)
         if target_temp is None:
-            raise ValueError("Temperature is required")
+            target_temp = kwargs.get("temperature")
+            if target_temp is None:
+                raise ValueError("Temperature is required")
 
         if (target_temp < self.min_temp or target_temp > self.max_temp) and \
-            (target_temp not in PRESET_TEMPERATURES.values()):
-
+           (target_temp not in PRESET_TEMPERATURES.values()):
             _LOGGER.warning(f"[Device {self._device_id}] Temperature {target_temp}C is out of range.")
             return
 
         _LOGGER.info(f"[Device {self._device_id}] Setting target temperature to {target_temp}C")
-        await self.coordinator.client.set_temp_level(target_temp)
 
-        # Update internal state immediately
-        self.coordinator.data["control"]["set_temperature_c"] = target_temp
-        self.async_write_ha_state()
+        command = self.coordinator.client.set_temp_level(target_temp)
+        verification = lambda: self.coordinator.data["control"].get("set_temperature_c") == target_temp
+
+        await self._async_api_command_with_retry(
+            command_coroutine=command,
+            verification_callable=verification,
+            command_description=f"Set temperature to {target_temp}C"
+        )
+
 
     async def async_set_hvac_mode(self, hvac_mode):
-        if hvac_mode == HVACMode.AUTO:
-            await self.coordinator.client.set_device_status("active")
-        elif hvac_mode == HVACMode.OFF:
-            await self.coordinator.client.set_device_status("standby")
+        """Set new target hvac mode."""
+        if hvac_mode not in [HVACMode.AUTO, HVACMode.OFF]:
+            return
 
-        # Update internal state immediately
-        self.coordinator.data["control"]["thermal_control_status"] = "active" if hvac_mode == HVACMode.AUTO else "standby"
-        self.async_write_ha_state()
+        target_status = "active" if hvac_mode == HVACMode.AUTO else "standby"
+
+        command = self.coordinator.client.set_device_status(target_status)
+        verification = lambda: self.coordinator.data["control"].get("thermal_control_status") == target_status
+
+        await self._async_api_command_with_retry(
+            command_coroutine=command,
+            verification_callable=verification,
+            command_description=f"Set HVAC mode to {hvac_mode}"
+        )
 
     async def async_set_preset_mode(self, preset_mode):
-        # If device is off and trying to set a preset other than PRESET_NONE, turn it on first
+        """Set new preset mode."""
         if self.hvac_mode == HVACMode.OFF and preset_mode != PRESET_NONE:
             await self.async_set_hvac_mode(HVACMode.AUTO)
+
         if preset_mode in PRESET_TEMPERATURES:
-            # Save the old target temperature to restore when changing to PRESET_NONE
             if self.target_temperature is not None:
                 self._previous_target_temperature = self.target_temperature
             await self.async_set_temperature(temperature=PRESET_TEMPERATURES[preset_mode])
         elif preset_mode == PRESET_NONE:
-            # Restore to a meaningful temperature, using the current temperature if
-            # that's not possible
             if self.target_temperature is None:
                 if self._previous_target_temperature is not None:
                     await self.async_set_temperature(temperature=self._previous_target_temperature)
                 else:
-                    # Use the current temperature as the new target
                     await self.async_set_temperature(temperature=self.current_temperature)
 
     def _sanitize_temperature(self, temp):
         """Sanitize temperature values returned by the API."""
         if temp in PRESET_TEMPERATURES.values():
-            # Magic temperature representing Max Heat or Max Cool
             return None
         return temp
 
