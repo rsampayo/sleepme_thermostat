@@ -14,10 +14,13 @@ from .const import DOMAIN, PRESET_MAX_COOL, PRESET_MAX_HEAT, PRESET_TEMPERATURES
 
 _LOGGER = logging.getLogger(__name__)
 
-RETRY_ATTEMPTS = 3  # The number of times to try a command.
-POST_COMMAND_DELAY = 10  # Seconds to wait after a command before verifying.
-RETRY_DELAY = 127  # Seconds to wait after a failed attempt before retrying.
+RETRY_ATTEMPTS = 3
+POST_COMMAND_DELAY = 10
+RETRY_DELAY = 127
 
+def round_half_up(n):
+    """Round a number to the nearest .0 or .5."""
+    return round(n * 2) / 2
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up SleepMe Thermostat climate entity from a config entry."""
@@ -48,10 +51,10 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             "connections": {("mac", device_info.get("mac_address"))},
             "serial_number": device_info.get("serial_number"),
         }
-
+    
     async def _async_api_command_with_retry(
         self,
-        command_coroutine: Awaitable[Any],
+        command_callable: Callable[[], Awaitable[Any]],
         verification_callable: Callable[[], bool],
         command_description: str,
     ) -> bool:
@@ -65,7 +68,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
                 command_description, attempt + 1, RETRY_ATTEMPTS
             )
             try:
-                await command_coroutine
+                await command_callable()
             except Exception as e:
                 _LOGGER.warning(
                     "API command '%s' failed on attempt %d: %s",
@@ -177,16 +180,15 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             return
 
         _LOGGER.info(f"[Device {self._device_id}] Setting target temperature to {target_temp}C")
-
-        command = self.coordinator.client.set_temp_level(target_temp)
-        verification = lambda: self.coordinator.data["control"].get("set_temperature_c") == target_temp
+        
+        command_func = lambda: self.coordinator.client.set_temp_level(target_temp)
+        verification = lambda: self.coordinator.data["control"].get("set_temperature_c") == round_half_up(target_temp)
 
         await self._async_api_command_with_retry(
-            command_coroutine=command,
+            command_callable=command_func,
             verification_callable=verification,
             command_description=f"Set temperature to {target_temp}C"
         )
-
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set new target hvac mode."""
@@ -195,11 +197,11 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
         target_status = "active" if hvac_mode == HVACMode.AUTO else "standby"
 
-        command = self.coordinator.client.set_device_status(target_status)
+        command_func = lambda: self.coordinator.client.set_device_status(target_status)
         verification = lambda: self.coordinator.data["control"].get("thermal_control_status") == target_status
 
         await self._async_api_command_with_retry(
-            command_coroutine=command,
+            command_callable=command_func,
             verification_callable=verification,
             command_description=f"Set HVAC mode to {hvac_mode}"
         )
