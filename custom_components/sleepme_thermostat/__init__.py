@@ -1,11 +1,15 @@
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from .sleepme import SleepMeClient
 from .update_manager import SleepMeUpdateManager
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the SleepMe Thermostat component."""
@@ -21,7 +25,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api_token = entry.data.get("api_token")
     device_id = entry.data.get("device_id")
 
-    # Retrieve the additional device information
     firmware_version = entry.data.get("firmware_version")
     mac_address = entry.data.get("mac_address")
     model = entry.data.get("model")
@@ -39,18 +42,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("API token or device ID is missing from configuration.")
         return False
 
-    # Initialize the SleepMe client and store it in hass.data for shared access
     sleepme_controller = SleepMeClient(hass, api_url, api_token, device_id)
     hass.data[DOMAIN]["sleepme_controller"] = sleepme_controller
 
-    # Create and store the update manager
     update_manager = SleepMeUpdateManager(hass, api_url, api_token, device_id)
     hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
 
-    # Trigger the initial data fetch
     await update_manager.async_config_entry_first_refresh()
 
-    # Store the device information in hass.data for access by platforms
     hass.data[DOMAIN]["device_info"] = {
         "firmware_version": firmware_version,
         "mac_address": mac_address,
@@ -60,7 +59,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug(f"SleepMeClient and Update Manager initialized and stored in hass.data for device {device_id}.")
 
-    # Forward the entry setup to the specific platforms, including the sensors platform
     await hass.config_entries.async_forward_entry_setups(entry, ["climate", "binary_sensor", "sensor"])
 
     _LOGGER.info("SleepMe Thermostat component initialized successfully.")
