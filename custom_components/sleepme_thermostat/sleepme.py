@@ -31,8 +31,6 @@ class SleepMeClient:
 
         if response.get("set_temperature_c") == temp_c:
             _LOGGER.info(f"[Device {self.device_id}] Temperature successfully set to {temp_c}C.")
-        else:
-            _LOGGER.warning(f"[Device {self.device_id}] Temperature may not have been set to {temp_c}C. Response: {response}")
 
         return response
 
@@ -53,8 +51,6 @@ class SleepMeClient:
 
         if response.get("thermal_control_status") == status:
             _LOGGER.info(f"[Device {self.device_id}] Device status successfully set to {status}.")
-        else:
-            _LOGGER.warning(f"[Device {self.device_id}] Device status may not have been set to {status}. Response: {response}")
 
         return response
 
