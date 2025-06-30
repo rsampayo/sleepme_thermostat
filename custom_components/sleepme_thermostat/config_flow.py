@@ -33,22 +33,18 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.debug(f"User input received: {user_input}")
             self.api_token = user_input.get("api_token")
 
-            # Instantiate SleepMeClient to get the list of devices
-            client = SleepMeClient(API_URL, self.api_token)
+            client = SleepMeClient(self.hass, API_URL, self.api_token)
 
             try:
-                # Get the list of claimed devices
                 self.claimed_devices = await client.get_claimed_devices()
                 _LOGGER.debug(f"Claimed devices: {self.claimed_devices}")
 
                 if not self.claimed_devices:
                     errors["base"] = "no_devices_found"
                 else:
-                    # Proceed to select device step
                     return await self.async_step_select_device()
 
             except ValueError as err:
-                # Check for specific error raised for invalid token
                 if str(err) == "invalid_token":
                     _LOGGER.error(f"Invalid token error: {err}")
                     errors["base"] = "invalid_token"
@@ -75,23 +71,18 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             _LOGGER.debug(f"Device selected: {user_input}")
 
-            # Retrieve the selected device name and ID
             device_id = user_input["device_id"]
             name = self.context["claimed_devices_dict"][device_id]
 
-            # Set a unique ID for the device configuration
             await self.async_set_unique_id(device_id)
             self._abort_if_unique_id_configured()
 
-            # Instantiate SleepMeClient to fetch device details
-            client = SleepMeClient(API_URL, self.api_token, device_id)
+            client = SleepMeClient(self.hass, API_URL, self.api_token, device_id)
 
             try:
-                # Fetch the device status, which now includes "about" information
                 device_status = await client.get_device_status()
                 _LOGGER.debug(f"Device status: {device_status}")
 
-                # Store device info in the entry data
                 return self.async_create_entry(
                     title=f"Dock Pro {name}",
                     data={
@@ -110,7 +101,6 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(f"Error fetching device status: {e}")
                 errors["base"] = "cannot_fetch_device_info"
 
-        # Prepare the selection form
         if self.claimed_devices:
             claimed_devices_dict = {device["id"]: device["name"] for device in self.claimed_devices}
             self.context["claimed_devices_dict"] = claimed_devices_dict
