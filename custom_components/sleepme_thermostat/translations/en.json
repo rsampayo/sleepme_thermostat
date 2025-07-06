@@ -33,4 +33,10 @@
       "already_configured": "This device is already configured."
     }
   }
+  ,
+  "device_automation": {
+    "action_type": {
+      "set_temperature": "Set temperature"
+    }
+  }
 }

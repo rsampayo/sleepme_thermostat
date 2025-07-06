@@ -26,5 +26,10 @@
   },
   "abort": {
     "already_configured": "Este dispositivo ya está configurado."
+  },
+  "device_automation": {
+    "action_type": {
+      "set_temperature": "Establecer temperatura"
+    }
   }
 }
