@@ -14,7 +14,7 @@
       },
       "select_device": {
         "title": "Select Dock Pro Device",
-        "description": "Select the Docker Pro device you want to add.",
+        "description": "Select the Dock Pro device you want to add.",
         "data": {
           "device_id": "Device"
         },
