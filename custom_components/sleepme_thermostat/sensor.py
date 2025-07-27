@@ -11,6 +11,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     device_id = entry.data.get("device_id")
     name = entry.data.get("name")
     coordinator = hass.data[DOMAIN][f"{device_id}_update_manager"]
+    sleep_report_coordinator = hass.data[DOMAIN][f"{device_id}_sleep_report_manager"]
 
     _LOGGER.debug(f"[Device {device_id}] Setting up sensor platform from config entry.")
 
@@ -30,13 +31,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
     brightness_level_sensor = BrightnessLevelSensor(coordinator, thermostat, device_id, name)
     display_temp_unit_sensor = DisplayTemperatureUnitSensor(coordinator, thermostat, device_id, name)
     time_zone_sensor = TimeZoneSensor(coordinator, thermostat, device_id, name)
+    sleep_score_sensor = SleepScoreSensor(sleep_report_coordinator, device_id, name)
 
     async_add_entities([
-        ip_address_sensor, 
-        lan_address_sensor, 
-        brightness_level_sensor, 
-        display_temp_unit_sensor, 
-        time_zone_sensor
+        ip_address_sensor,
+        lan_address_sensor,
+        brightness_level_sensor,
+        display_temp_unit_sensor,
+        time_zone_sensor,
+        sleep_score_sensor,
     ])
 
 class IPAddressSensor(CoordinatorEntity, SensorEntity):
@@ -140,3 +143,19 @@ class TimeZoneSensor(CoordinatorEntity, SensorEntity):
     def state(self):
         """Return the time zone of the device."""
         return self.coordinator.data["control"].get("time_zone")
+
+
+class SleepScoreSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for displaying the latest sleep score."""
+
+    def __init__(self, coordinator, device_id, name):
+        super().__init__(coordinator)
+        self._device_id = device_id
+        self._attr_name = f"Dock Pro {name} Sleep Score"
+        self._attr_unique_id = f"{DOMAIN}_{device_id}_sleep_score"
+        self._attr_icon = "mdi:sleep"
+        self._attr_native_unit_of_measurement = "%"
+
+    @property
+    def state(self):
+        return self.coordinator.data.get("sleep_score_percent")

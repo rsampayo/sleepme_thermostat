@@ -58,3 +58,29 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
                 "control": {},
                 "about": {},
             }
+
+
+class SleepReportUpdateManager(DataUpdateCoordinator):
+    """Fetches periodic sleep report information."""
+
+    def __init__(self, hass: HomeAssistant, api_url: str, token: str):
+        self.client = SleepMeClient(hass, api_url, token)
+
+        update_interval = timedelta(hours=1)
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="SleepMe Sleep Report Manager",
+            update_interval=update_interval,
+        )
+
+    async def _async_update_data(self):
+        try:
+            report = await self.client.get_sleep_report()
+            if report and report.get("reports"):
+                return report["reports"][0]
+            return {}
+        except Exception as e:
+            _LOGGER.error(f"Error updating sleep report: {e}")
+            return {}

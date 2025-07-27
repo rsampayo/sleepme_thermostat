@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from .sleepme import SleepMeClient
-from .update_manager import SleepMeUpdateManager
+from .update_manager import SleepMeUpdateManager, SleepReportUpdateManager
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,7 +48,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     update_manager = SleepMeUpdateManager(hass, api_url, api_token, device_id)
     hass.data[DOMAIN][f"{device_id}_update_manager"] = update_manager
 
+    sleep_report_manager = SleepReportUpdateManager(hass, api_url, api_token)
+    hass.data[DOMAIN][f"{device_id}_sleep_report_manager"] = sleep_report_manager
+
     await update_manager.async_config_entry_first_refresh()
+    await sleep_report_manager.async_config_entry_first_refresh()
 
     hass.data[DOMAIN]["device_info"] = {
         "firmware_version": firmware_version,

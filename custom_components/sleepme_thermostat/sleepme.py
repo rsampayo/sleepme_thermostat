@@ -81,3 +81,21 @@ class SleepMeClient:
         
         _LOGGER.error(f"Failed to fetch device status for {self.device_id}. Response: {response}")
         return {}
+
+    async def get_sleep_report(self, start_date: str | None = None, days_back: int = 0, time_zone: str = "UTC", retries: int = 1):
+        """Retrieve sleep report data for the account."""
+        endpoint = "sleep-reports"
+        params = {"days_back": days_back, "time_zone": time_zone}
+        if start_date:
+            params["start_date"] = start_date
+
+        _LOGGER.debug(f"Fetching sleep report from {endpoint} with params: {params}")
+
+        response = await self.api.api_request("GET", endpoint, params=params, retries=retries)
+
+        if isinstance(response, dict):
+            _LOGGER.debug(f"Sleep report fetched: {response}")
+            return response
+
+        _LOGGER.error(f"Unexpected response format for sleep report: {response}")
+        return {}
