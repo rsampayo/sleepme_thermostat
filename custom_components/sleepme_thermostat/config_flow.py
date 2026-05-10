@@ -1,7 +1,10 @@
 import logging
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
+try:
+    from homeassistant.config_entries import ConfigFlowResult as FlowResult
+except ImportError:
+    from homeassistant.data_entry_flow import FlowResult  # type: ignore[no-redef]
 from .sleepme import SleepMeClient
 from .const import DOMAIN, API_URL
 from httpx import HTTPStatusError
