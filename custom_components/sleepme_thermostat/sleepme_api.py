@@ -36,6 +36,12 @@ _LOGGER = logging.getLogger(__name__)
 
 MAX_REQUESTS_PER_MINUTE = 9
 RATE_LIMIT_WINDOW = 60  # seconds
+# Edge grace: when the deque is at capacity but the oldest entry is within this
+# many seconds of expiring, absorb the wait in-call instead of raising. Prevents
+# benign timing skew at the window boundary from cascading into UpdateFailed +
+# entity-flap when an install sits at the per-account ceiling (e.g. 3 devices
+# polling at 20s = 9 req/min exactly).
+RATE_LIMIT_EDGE_GRACE = 5.0  # seconds
 DEFAULT_RETRIES = 3
 BACKOFF_BASE_429 = 30  # seconds
 BACKOFF_BASE_5XX = 10  # seconds
@@ -190,10 +196,14 @@ class SleepMeAPI:
                 ) from err
 
     async def _enforce_local_rate_limit(self, method: str, endpoint: str) -> None:
-        """Record the request or raise SleepMeRateLimited.
+        """Record the request, briefly wait at the window edge, or raise.
 
         Sliding window: drop entries older than RATE_LIMIT_WINDOW, then check
-        capacity. We deliberately do NOT queue — caller decides what to do.
+        capacity. If at capacity but the wait is small (<= RATE_LIMIT_EDGE_GRACE)
+        we sleep in-call — multi-device installs sitting at the per-account
+        ceiling routinely tip a few ms past the edge, and turning that into an
+        ERROR + UpdateFailed every cycle is the worst kind of log noise. Larger
+        waits still raise: caller decides.
         """
         async with self._lock:
             now = time.monotonic()
@@ -206,6 +216,22 @@ class SleepMeAPI:
             maxlen = self._request_times.maxlen
             if maxlen is not None and len(self._request_times) >= maxlen:
                 wait = RATE_LIMIT_WINDOW - (now - self._request_times[0])
+                if wait <= RATE_LIMIT_EDGE_GRACE:
+                    _LOGGER.debug(
+                        "Local rate-limit edge on %s %s; waiting %.3fs in-call",
+                        method,
+                        endpoint,
+                        wait,
+                    )
+                    await asyncio.sleep(max(wait, 0.0))
+                    now = time.monotonic()
+                    while (
+                        self._request_times
+                        and now - self._request_times[0] >= RATE_LIMIT_WINDOW
+                    ):
+                        self._request_times.popleft()
+                    self._request_times.append(now)
+                    return
                 _LOGGER.warning(
                     "Local rate limit hit on %s %s; would need %.1fs. Rejecting.",
                     method,

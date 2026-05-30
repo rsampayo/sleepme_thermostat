@@ -16,6 +16,9 @@ MAX_TEMP_C = 48.0
 
 # Options flow
 CONF_SCAN_INTERVAL = "scan_interval"
-DEFAULT_SCAN_INTERVAL = 20
+# 30s default keeps 3-device installs comfortably under the 9 req/min
+# per-account ceiling (3 * 60/30 = 6 req/min). v4.1.0 release notes asked
+# multi-device users to bump this manually; v4.1.1 makes it the default.
+DEFAULT_SCAN_INTERVAL = 30
 MIN_SCAN_INTERVAL = 10
 MAX_SCAN_INTERVAL = 300

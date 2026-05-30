@@ -10,6 +10,8 @@ import pytest
 from custom_components.sleepme_thermostat.sleepme_api import (
     BACKOFF_BASE_429,
     MAX_REQUESTS_PER_MINUTE,
+    RATE_LIMIT_EDGE_GRACE,
+    RATE_LIMIT_WINDOW,
     SleepMeAPI,
     SleepMeAuthError,
     SleepMeRateLimited,
@@ -110,6 +112,49 @@ async def test_get_under_rate_limit_raises(api: SleepMeAPI) -> None:
     now = time.monotonic()
     for _ in range(MAX_REQUESTS_PER_MINUTE):
         api._request_times.append(now)
+
+    with pytest.raises(SleepMeRateLimited):
+        await api.api_request("GET", "devices", retries=0)
+
+
+async def test_window_edge_waits_briefly_instead_of_raising(
+    api: SleepMeAPI,
+) -> None:
+    """Deque at capacity but oldest within RATE_LIMIT_EDGE_GRACE: sleep, proceed.
+
+    Models the steady-state for a 3-device install at 20s polling: cumulative
+    9 req/min sits exactly at the per-account ceiling, so the next call lands
+    a few ms past the window edge. v4.1.1 absorbs that in-call.
+    """
+    # Oldest entry is 59s old -> wait would be ~1s, within the 5s grace.
+    edge_age = RATE_LIMIT_WINDOW - 1.0
+    base = time.monotonic() - edge_age
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(base)
+
+    final_ok = MagicMock()
+    final_ok.raise_for_status = MagicMock()
+    final_ok.json = MagicMock(return_value={"ok": True})
+    api.client.request.return_value = final_ok
+
+    with patch(
+        "custom_components.sleepme_thermostat.sleepme_api.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        result = await api.api_request("GET", "devices", retries=0)
+
+    assert result == {"ok": True}
+    assert mock_sleep.await_count == 1
+    waited = mock_sleep.await_args_list[0].args[0]
+    assert 0.0 <= waited <= RATE_LIMIT_EDGE_GRACE
+
+
+async def test_wait_above_grace_still_raises(api: SleepMeAPI) -> None:
+    """Deque at capacity with oldest well inside window still raises."""
+    # Oldest entry is 30s old -> wait ~30s, far above the grace.
+    base = time.monotonic() - 30.0
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(base)
 
     with pytest.raises(SleepMeRateLimited):
         await api.api_request("GET", "devices", retries=0)
