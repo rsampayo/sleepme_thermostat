@@ -70,6 +70,33 @@ async def test_happy_path(hass: HomeAssistant, mock_flow_client: AsyncMock) -> N
     assert result["data"]["model"] == "Dock Pro"
 
 
+async def test_select_device_rejects_gen2(
+    hass: HomeAssistant, mock_flow_client: AsyncMock
+) -> None:
+    """Gen-2 ('x2-') devices are blocked with a clear error, no API call made."""
+    gen2_id = "x2-d8fe1o7aq7uc73jgee8g"
+    mock_flow_client.get_claimed_devices.return_value = [
+        {"id": gen2_id, "name": "Chilipad 2.0"}
+    ]
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"api_token": MOCK_API_TOKEN}
+    )
+    assert result["step_id"] == "select_device"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"device_id": gen2_id}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "select_device"
+    assert result["errors"] == {"base": "unsupported_gen2_device"}
+    # Unsupported devices must be blocked before any per-device API call.
+    mock_flow_client.get_device_status.assert_not_called()
+
+
 async def test_user_step_invalid_token(
     hass: HomeAssistant, mock_flow_client: AsyncMock
 ) -> None:

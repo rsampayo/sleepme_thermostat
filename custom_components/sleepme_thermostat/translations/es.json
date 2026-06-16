@@ -38,7 +38,8 @@
       "cannot_connect": "No se pudo conectar a la API. Por favor, verifique el token e intente nuevamente.",
       "no_devices_found": "No se encontraron dispositivos con el token proporcionado.",
       "cannot_fetch_device_info": "No se puede obtener la información del dispositivo. Por favor, verifique su conexión e intente nuevamente.",
-      "device_not_found_for_token": "Este token no tiene acceso al dispositivo configurado originalmente."
+      "device_not_found_for_token": "Este token no tiene acceso al dispositivo configurado originalmente.",
+      "unsupported_gen2_device": "Los dispositivos Gen-2 / Chilipad 2.0 aún no son compatibles. La API de desarrollador de SleepMe rechaza estas unidades, por lo que Home Assistant no puede leerlas ni controlarlas. Sigue el progreso en github.com/rsampayo/sleepme_thermostat/issues/46."
     },
     "abort": {
       "already_configured": "Este dispositivo ya está configurado.",
