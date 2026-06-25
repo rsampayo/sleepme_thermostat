@@ -14,14 +14,6 @@ PRESET_TEMPERATURES = {PRESET_MAX_COOL: -1, PRESET_MAX_HEAT: 999}
 MIN_TEMP_C = 13.0
 MAX_TEMP_C = 48.0
 
-# Device-ID prefixes the v1 API cannot serve. Gen-2 / Chilipad 2.0 units use
-# "x2-" IDs that v1 GET/PATCH /devices/{id} rejects with HTTP 400
-# "invalid device ID", while the v2 device surface returns 403 for developer
-# tokens. The integration can enumerate these devices via GET /devices but can
-# neither read their status nor control them, so the config flow blocks them
-# with a clear message. See https://github.com/rsampayo/sleepme_thermostat/issues/46.
-UNSUPPORTED_DEVICE_ID_PREFIXES = ("x2-",)
-
 # Options flow
 CONF_SCAN_INTERVAL = "scan_interval"
 # 30s default keeps 3-device installs comfortably under the 9 req/min

@@ -289,6 +289,20 @@ async def test_current_temperature_passthrough(
     assert state.attributes["current_temperature"] == 22.0
 
 
+async def test_current_temperature_negative_sentinel_is_unknown(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """Gen-2 units report water_temperature_c == -1 in standby; surface it as
+    unknown rather than a bogus sub-zero reading. See issue #46."""
+    entry = await _setup(hass)
+    coord = entry.runtime_data.coordinator
+    coord.data["status"]["water_temperature_c"] = -1
+    coord.async_update_listeners()
+    await hass.async_block_till_done()
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["current_temperature"] is None
+
+
 async def test_available_false_when_coordinator_unsuccessful(
     hass: HomeAssistant, mock_sleepme_client: AsyncMock
 ) -> None:

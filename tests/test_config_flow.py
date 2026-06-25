@@ -70,14 +70,23 @@ async def test_happy_path(hass: HomeAssistant, mock_flow_client: AsyncMock) -> N
     assert result["data"]["model"] == "Dock Pro"
 
 
-async def test_select_device_rejects_gen2(
+async def test_select_device_accepts_gen2(
     hass: HomeAssistant, mock_flow_client: AsyncMock
 ) -> None:
-    """Gen-2 ('x2-') devices are blocked with a clear error, no API call made."""
+    """Gen-2 ('x2-') devices now configure like any other once the v1 API
+    serves them. See issue #46."""
     gen2_id = "x2-d8fe1o7aq7uc73jgee8g"
     mock_flow_client.get_claimed_devices.return_value = [
         {"id": gen2_id, "name": "Chilipad 2.0"}
     ]
+    mock_flow_client.get_device_status.return_value = {
+        "about": {
+            "firmware_version": "1.11.1339",
+            "mac_address": "ee:ee:ee:ee:ee:ee",
+            "model": "DP723NA",
+            "serial_number": "12345600290",
+        }
+    }
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -90,11 +99,11 @@ async def test_select_device_rejects_gen2(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"device_id": gen2_id}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select_device"
-    assert result["errors"] == {"base": "unsupported_gen2_device"}
-    # Unsupported devices must be blocked before any per-device API call.
-    mock_flow_client.get_device_status.assert_not_called()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Dock Pro Chilipad 2.0"
+    assert result["data"]["device_id"] == gen2_id
+    assert result["data"]["model"] == "DP723NA"
+    mock_flow_client.get_device_status.assert_called_once()
 
 
 async def test_user_step_invalid_token(

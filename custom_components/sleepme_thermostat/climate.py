@@ -126,7 +126,13 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        return self.coordinator.data["status"].get("water_temperature_c")
+        water_temp_c = self.coordinator.data["status"].get("water_temperature_c")
+        # Gen-2 / Chilipad 2.0 units report -1 for water_temperature_c (and _f)
+        # while idle in standby — a "no reading" sentinel, not a real
+        # sub-zero water bath. Surface it as unknown rather than -1 C.
+        if water_temp_c is not None and water_temp_c < 0:
+            return None
+        return water_temp_c
 
     @property
     def target_temperature(self) -> float | None:
