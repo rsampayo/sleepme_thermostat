@@ -18,7 +18,6 @@ from .const import (
     DOMAIN,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
-    UNSUPPORTED_DEVICE_ID_PREFIXES,
 )
 from .sleepme import SleepMeClient
 from .sleepme_api import (
@@ -100,45 +99,37 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_id = user_input["device_id"]
             name = self._claimed_devices_dict[device_id]
 
-            if device_id.startswith(UNSUPPORTED_DEVICE_ID_PREFIXES):
-                # Gen-2 / Chilipad 2.0 ("x2-") devices: the sleep.me v1 API
-                # rejects these IDs with HTTP 400 and the v2 surface returns 403
-                # for developer tokens, so we can read neither status nor control
-                # them yet. Block with a clear message instead of a generic
-                # fetch error. See issue #46.
-                errors["base"] = "unsupported_gen2_device"
-            else:
-                await self.async_set_unique_id(device_id)
-                self._abort_if_unique_id_configured()
+            await self.async_set_unique_id(device_id)
+            self._abort_if_unique_id_configured()
 
-                client = SleepMeClient(self.hass, API_URL, self.api_token, device_id)
+            client = SleepMeClient(self.hass, API_URL, self.api_token, device_id)
 
-                try:
-                    device_status = await client.get_device_status()
-                    return self.async_create_entry(
-                        title=f"Dock Pro {name}",
-                        data={
-                            "api_token": self.api_token,
-                            "device_id": device_id,
-                            "firmware_version": device_status.get("about", {}).get(
-                                "firmware_version"
-                            ),
-                            "mac_address": device_status.get("about", {}).get(
-                                "mac_address"
-                            ),
-                            "model": device_status.get("about", {}).get("model"),
-                            "serial_number": device_status.get("about", {}).get(
-                                "serial_number"
-                            ),
-                        },
-                    )
-                except SleepMeAuthError:
-                    errors["base"] = "invalid_token"
-                except (SleepMeRateLimited, SleepMeConnectionError):
-                    errors["base"] = "cannot_connect"
-                except Exception:
-                    _LOGGER.exception("Error fetching device status")
-                    errors["base"] = "cannot_fetch_device_info"
+            try:
+                device_status = await client.get_device_status()
+                return self.async_create_entry(
+                    title=f"Dock Pro {name}",
+                    data={
+                        "api_token": self.api_token,
+                        "device_id": device_id,
+                        "firmware_version": device_status.get("about", {}).get(
+                            "firmware_version"
+                        ),
+                        "mac_address": device_status.get("about", {}).get(
+                            "mac_address"
+                        ),
+                        "model": device_status.get("about", {}).get("model"),
+                        "serial_number": device_status.get("about", {}).get(
+                            "serial_number"
+                        ),
+                    },
+                )
+            except SleepMeAuthError:
+                errors["base"] = "invalid_token"
+            except (SleepMeRateLimited, SleepMeConnectionError):
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception("Error fetching device status")
+                errors["base"] = "cannot_fetch_device_info"
 
         if self.claimed_devices:
             self._claimed_devices_dict = {
