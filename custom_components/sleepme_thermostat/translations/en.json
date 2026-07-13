@@ -1,9 +1,9 @@
 {
-  "title": "SleepMe Dock Pro",
+  "title": "SleepMe",
   "config": {
     "step": {
       "user": {
-        "title": "Add SleepMe Dock Pro",
+        "title": "Add SleepMe device",
         "description": "Please enter your API token to proceed.",
         "data": {
           "api_token": "API Token"
@@ -13,8 +13,8 @@
         }
       },
       "select_device": {
-        "title": "Select Dock Pro Device",
-        "description": "Select the Dock Pro device you want to add.",
+        "title": "Select SleepMe device",
+        "description": "Select the Dock Pro, Chilipad, or Sleep Tracker you want to add.",
         "data": {
           "device_id": "Bed / Device"
         },
@@ -23,7 +23,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Re-authenticate SleepMe Dock Pro",
+        "title": "Re-authenticate SleepMe",
         "description": "Your SleepMe API token is no longer valid. Enter a new token to reconnect.",
         "data": {
           "api_token": "API Token"
@@ -48,7 +48,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "SleepMe Dock Pro options",
+        "title": "SleepMe device options",
         "description": "Adjust how often Home Assistant polls the SleepMe API for this device. Lower values feel more responsive but consume more of your per-minute API budget.",
         "data": {
           "scan_interval": "Poll interval (seconds)"
@@ -57,6 +57,30 @@
     },
     "error": {
       "invalid_scan_interval": "Poll interval must be between 10 and 300 seconds."
+    }
+  },
+  "services": {
+    "get_sleep_reports": {
+      "name": "Get sleep reports",
+      "description": "Fetch the complete raw Sleepme sleep-report payload for an account. The response includes sessions and hypnogram segments and is not stored in Home Assistant's recorder.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry",
+          "description": "The loaded SleepMe configuration entry whose API token should be used."
+        },
+        "start_date": {
+          "name": "End date",
+          "description": "The final report date to request. Defaults to today in the selected time zone."
+        },
+        "days_back": {
+          "name": "Days back",
+          "description": "The number of preceding days to include, from zero through six."
+        },
+        "time_zone": {
+          "name": "Time zone",
+          "description": "An IANA time-zone name. Defaults to Home Assistant's configured time zone."
+        }
+      }
     }
   }
 }

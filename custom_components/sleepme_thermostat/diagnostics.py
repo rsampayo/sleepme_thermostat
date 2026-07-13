@@ -1,12 +1,10 @@
-"""Diagnostics support for SleepMe Thermostat.
+"""Diagnostics support for SleepMe devices.
 
 Exposed through HA's "Download diagnostics" UI on the device page.
 
-The api_token is redacted; everything else (coordinator data, entry options,
-device info) is included verbatim so support requests carry enough state to
-reproduce a bug without follow-up. MAC, IP, LAN, serial are also redacted by
-default to make the output safer to paste verbatim into a GitHub issue —
-narrow `TO_REDACT` if you need them visible during real debugging.
+The api_token is redacted. MAC, IP, LAN, and serial are also redacted by
+default. Sleep reports are health data, so diagnostics include only report
+coordinator health and counts, never sessions or hypnogram payloads.
 """
 
 from __future__ import annotations
@@ -33,6 +31,7 @@ async def async_get_config_entry_diagnostics(
     data = getattr(entry, "runtime_data", None)
 
     coordinator_payload: dict[str, Any] = {}
+    report_coordinator_payload: dict[str, Any] | None = None
     device_info: dict[str, Any] = {}
     if data is not None:
         coordinator = data.coordinator
@@ -51,6 +50,23 @@ async def async_get_config_entry_diagnostics(
             "data": coordinator.data or {},
         }
         device_info = dict(data.device_info)
+        if data.report_coordinator is not None:
+            report_coordinator = data.report_coordinator
+            reports = report_coordinator.data or []
+            report_coordinator_payload = {
+                "update_interval_seconds": (
+                    report_coordinator.update_interval.total_seconds()
+                    if report_coordinator.update_interval is not None
+                    else None
+                ),
+                "last_update_success": report_coordinator.last_update_success,
+                "last_exception": (
+                    repr(report_coordinator.last_exception)
+                    if report_coordinator.last_exception is not None
+                    else None
+                ),
+                "report_count": len(reports),
+            }
 
     return {
         "entry": {
@@ -61,4 +77,5 @@ async def async_get_config_entry_diagnostics(
         },
         "device_info": async_redact_data(device_info, TO_REDACT),
         "coordinator": async_redact_data(coordinator_payload, TO_REDACT),
+        "report_coordinator": report_coordinator_payload,
     }

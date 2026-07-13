@@ -1,4 +1,4 @@
-"""Config flow for SleepMe Thermostat."""
+"""Config flow for SleepMe devices."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
+from .helpers import is_sleep_tracker
 from .sleepme import SleepMeClient
 from .sleepme_api import (
     SleepMeAuthError,
@@ -30,9 +31,9 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for SleepMe Thermostat."""
+    """Handle a config flow for SleepMe devices."""
 
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         self.api_token: str = ""
@@ -106,8 +107,12 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 device_status = await client.get_device_status()
+                model = device_status.get("about", {}).get("model")
+                product_name = (
+                    "Sleep Tracker" if is_sleep_tracker(model) else "Dock Pro"
+                )
                 return self.async_create_entry(
-                    title=f"Dock Pro {name}",
+                    title=f"{product_name} {name}",
                     data={
                         "api_token": self.api_token,
                         "device_id": device_id,
@@ -117,7 +122,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "mac_address": device_status.get("about", {}).get(
                             "mac_address"
                         ),
-                        "model": device_status.get("about", {}).get("model"),
+                        "model": model,
                         "serial_number": device_status.get("about", {}).get(
                             "serial_number"
                         ),

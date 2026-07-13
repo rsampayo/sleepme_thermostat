@@ -44,7 +44,7 @@ from .const import (
     PRESET_MAX_HEAT,
     PRESET_TEMPERATURES,
 )
-from .helpers import build_device_info, round_half_up
+from .helpers import build_device_info, is_sleep_tracker, round_half_up
 from .sleepme_api import (
     SleepMeAPIError,
     SleepMeAuthError,
@@ -69,8 +69,10 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SleepMe Thermostat climate entity from a config entry."""
+    """Set up a SleepMe climate entity from a config entry."""
     device_id: str = entry.data["device_id"]
+    if is_sleep_tracker(entry.data.get("model")):
+        return
     data = entry.runtime_data
     device_info = build_device_info(device_id, entry.title, data.device_info)
 

@@ -2,6 +2,22 @@ API_URL = "https://api.developer.sleep.me/v1"
 
 DOMAIN = "sleepme_thermostat"
 
+MODEL_SLEEP_TRACKER = "ST501NA"
+
+SERVICE_GET_SLEEP_REPORTS = "get_sleep_reports"
+ATTR_CONFIG_ENTRY_ID = "config_entry_id"
+ATTR_START_DATE = "start_date"
+ATTR_DAYS_BACK = "days_back"
+ATTR_TIME_ZONE = "time_zone"
+
+# The public API accepts the requested date plus at most six preceding days.
+# Sleep reports are finalized after the sleeper has been out of bed for roughly
+# 15 minutes, so a separate 30-minute coordinator is responsive without spending
+# the scarce per-account request budget on every live-device poll.
+MAX_SLEEP_REPORT_DAYS_BACK = 6
+DEFAULT_SLEEP_REPORT_DAYS_BACK = 6
+DEFAULT_SLEEP_REPORT_SCAN_INTERVAL = 30 * 60
+
 PRESET_MAX_COOL = "Max Cool"
 PRESET_MAX_HEAT = "Max Heat"
 

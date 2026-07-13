@@ -106,6 +106,38 @@ async def test_select_device_accepts_gen2(
     mock_flow_client.get_device_status.assert_called_once()
 
 
+async def test_select_device_recognizes_sleep_tracker(
+    hass: HomeAssistant, mock_flow_client: AsyncMock
+) -> None:
+    """ST501NA is configured as a Sleep Tracker instead of a Dock Pro."""
+    tracker_id = "st-tracker-device"
+    mock_flow_client.get_claimed_devices.return_value = [
+        {"id": tracker_id, "name": "Bedroom"}
+    ]
+    mock_flow_client.get_device_status.return_value = {
+        "about": {
+            "firmware_version": "2.3.4",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-1",
+        }
+    }
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"api_token": MOCK_API_TOKEN}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"device_id": tracker_id}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Sleep Tracker Bedroom"
+    assert result["data"]["model"] == "ST501NA"
+
+
 async def test_user_step_invalid_token(
     hass: HomeAssistant, mock_flow_client: AsyncMock
 ) -> None:
