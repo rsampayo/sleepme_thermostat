@@ -177,6 +177,23 @@ async def test_401_raises_auth_error_immediately(api: SleepMeAPI) -> None:
     assert mock_sleep.await_count == 0
 
 
+async def test_query_parameters_are_passed_to_httpx(api: SleepMeAPI) -> None:
+    """The transport passes sleep-report query parameters separately from URLs."""
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json = MagicMock(return_value={"reports": []})
+    api.client.request.return_value = response
+
+    params = {
+        "start_date": "2026-07-13",
+        "days_back": 6,
+        "time_zone": "Europe/Budapest",
+    }
+    await api.api_request("GET", "sleep-reports", params=params, retries=0)
+
+    assert api.client.request.await_args.kwargs["params"] == params
+
+
 async def test_compute_backoff_falls_back_when_no_retry_after() -> None:
     """Static computation: base * 2**(attempt-1)."""
     resp = _http_response(429)

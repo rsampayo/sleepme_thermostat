@@ -9,6 +9,7 @@ Patches SleepMeAPI at the call boundary so we exercise the wrapper's:
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -92,3 +93,41 @@ async def test_get_device_status_happy(client: SleepMeClient) -> None:
     client.api.api_request.return_value = payload
     result = await client.get_device_status()
     assert result == payload
+
+
+async def test_get_sleep_reports_happy(client: SleepMeClient) -> None:
+    """Sleep reports use the documented account-scoped query parameters."""
+    reports = [{"date": "2026-07-13", "sessions": []}]
+    client.api.api_request.return_value = {"reports": reports}
+
+    result = await client.get_sleep_reports(
+        start_date=date(2026, 7, 13),
+        days_back=6,
+        time_zone="Europe/Budapest",
+    )
+
+    assert result == reports
+    call = client.api.api_request.call_args
+    assert call.args == ("GET", "sleep-reports")
+    assert call.kwargs["params"] == {
+        "start_date": "2026-07-13",
+        "days_back": 6,
+        "time_zone": "Europe/Budapest",
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [[], {}, {"reports": {}}, {"reports": ["not-a-report"]}],
+)
+async def test_get_sleep_reports_rejects_bad_shapes(
+    client: SleepMeClient, payload: object
+) -> None:
+    """Malformed report responses fail closed instead of poisoning entities."""
+    client.api.api_request.return_value = payload
+    with pytest.raises(ValueError, match="unexpected response"):
+        await client.get_sleep_reports(
+            start_date=date(2026, 7, 13),
+            days_back=6,
+            time_zone="Europe/Budapest",
+        )

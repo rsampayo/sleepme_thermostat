@@ -1,0 +1,62 @@
+blueprint:
+  name: SleepMe Tracker - Occupancy actions
+  description: >-
+    Run arbitrary Home Assistant actions when the SleepMe Tracker detects that
+    someone entered or left the bed. Separate delays suppress brief changes.
+  domain: automation
+  author: SleepMe Home Assistant integration
+  source_url: https://github.com/rsampayo/sleepme_thermostat/blob/main/blueprints/automation/sleepme_thermostat/tracker_occupancy_actions.yaml
+  homeassistant:
+    min_version: 2026.1.0
+  input:
+    occupancy_sensor:
+      name: Tracker occupancy sensor
+      description: Select the SleepMe Tracker User Detected binary sensor.
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    occupied_delay:
+      name: Occupied confirmation delay
+      default:
+        seconds: 0
+      selector:
+        duration:
+    empty_delay:
+      name: Empty confirmation delay
+      default:
+        seconds: 30
+      selector:
+        duration:
+    occupied_actions:
+      name: Actions when occupied
+      default: []
+      selector:
+        action:
+    empty_actions:
+      name: Actions when empty
+      default: []
+      selector:
+        action:
+
+mode: parallel
+max: 10
+
+triggers:
+  - trigger: state
+    entity_id: !input occupancy_sensor
+    to: "on"
+    for: !input occupied_delay
+    id: occupied
+  - trigger: state
+    entity_id: !input occupancy_sensor
+    to: "off"
+    for: !input empty_delay
+    id: empty
+
+actions:
+  - choose:
+      - conditions: "{{ trigger.id == 'occupied' }}"
+        sequence: !input occupied_actions
+      - conditions: "{{ trigger.id == 'empty' }}"
+        sequence: !input empty_actions

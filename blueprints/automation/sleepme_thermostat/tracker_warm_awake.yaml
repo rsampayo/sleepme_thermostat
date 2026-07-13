@@ -1,0 +1,100 @@
+blueprint:
+  name: SleepMe Tracker + Dock - Warm-awake routine
+  description: >-
+    Reproduce a transparent Warm Awake routine in Home Assistant: shortly
+    before the configured wake time, warm an occupied bed for a fixed duration
+    and then turn the Dock off. This uses Tracker occupancy and deterministic
+    HA rules, not a Sleepme cloud program.
+  domain: automation
+  author: SleepMe Home Assistant integration
+  source_url: https://github.com/rsampayo/sleepme_thermostat/blob/main/blueprints/automation/sleepme_thermostat/tracker_warm_awake.yaml
+  homeassistant:
+    min_version: 2026.1.0
+  input:
+    occupancy_sensor:
+      name: Tracker occupancy sensor
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    dock_climate:
+      name: Dock climate entity
+      selector:
+        entity:
+          filter:
+            domain: climate
+            integration: sleepme_thermostat
+    wake_time:
+      name: Wake time
+      default: "07:00:00"
+      selector:
+        time:
+    preheat_minutes:
+      name: Start before wake time
+      description: Sleepme documents a 15-minute Warm Awake lead time.
+      default: 15
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 1
+          unit_of_measurement: min
+          mode: box
+    warm_temperature:
+      name: Warm-awake temperature
+      description: Enter this in Home Assistant's configured temperature unit.
+      default: 32
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 0.5
+          mode: box
+    warm_duration:
+      name: Warm duration
+      description: Sleepme documents a 20-minute Warm Awake duration.
+      default:
+        minutes: 20
+      selector:
+        duration:
+
+mode: single
+
+variables:
+  occupancy_entity: !input occupancy_sensor
+  dock_entity: !input dock_climate
+  configured_wake: !input wake_time
+  lead_minutes: !input preheat_minutes
+  target_temperature: !input warm_temperature
+
+triggers:
+  - trigger: time_pattern
+    minutes: "*"
+
+conditions:
+  - condition: template
+    value_template: >-
+      {% set wake_parts = configured_wake.split(':') %}
+      {% set wake_minute = (wake_parts[0] | int) * 60 + (wake_parts[1] | int) %}
+      {% set start_minute = (wake_minute - lead_minutes) % 1440 %}
+      {{ now().hour * 60 + now().minute == start_minute }}
+  - condition: template
+    value_template: >-
+      {{ is_state(occupancy_entity, 'on') and
+         states(dock_entity) not in ['unknown', 'unavailable'] }}
+
+actions:
+  - action: climate.set_hvac_mode
+    target:
+      entity_id: !input dock_climate
+    data:
+      hvac_mode: auto
+  - action: climate.set_temperature
+    target:
+      entity_id: !input dock_climate
+    data:
+      temperature: "{{ target_temperature }}"
+  - delay: !input warm_duration
+  - action: climate.turn_off
+    target:
+      entity_id: !input dock_climate

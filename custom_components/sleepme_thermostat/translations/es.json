@@ -1,9 +1,9 @@
 {
-  "title": "SleepMe Dock Pro",
+  "title": "SleepMe",
   "config": {
     "step": {
       "user": {
-        "title": "Configurar SleepMe Dock Pro",
+        "title": "Configurar dispositivo SleepMe",
         "description": "Por favor, ingrese su token de API.",
         "data": {
           "api_token": "Token de API"
@@ -14,7 +14,7 @@
       },
       "select_device": {
         "title": "Seleccionar Dispositivo",
-        "description": "Seleccione el dispositivo Dock Pro que desea configurar.",
+        "description": "Seleccione el Dock Pro, Chilipad o Sleep Tracker que desea configurar.",
         "data": {
           "device_id": "Cama / Dispositivo"
         },
@@ -23,7 +23,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Re-autenticar SleepMe Dock Pro",
+        "title": "Re-autenticar SleepMe",
         "description": "Su token de API de SleepMe ya no es válido. Ingrese un nuevo token para volver a conectarse.",
         "data": {
           "api_token": "Token de API"
@@ -48,15 +48,41 @@
   "options": {
     "step": {
       "init": {
-        "title": "Opciones de SleepMe Dock Pro",
-        "description": "Ajusta con qué frecuencia Home Assistant consulta la API de SleepMe para este dispositivo. Valores más bajos son más reactivos pero consumen más de tu presupuesto de llamadas por minuto.",
+        "title": "Opciones del dispositivo SleepMe",
+        "description": "Ajusta con qué frecuencia Home Assistant consulta la API de SleepMe. Para Sleep Tracker también puedes configurar el objetivo nocturno usado por los sensores derivados de objetivo y deuda de sueño.",
         "data": {
-          "scan_interval": "Intervalo de sondeo (segundos)"
+          "scan_interval": "Intervalo de sondeo (segundos)",
+          "sleep_target_hours": "Objetivo nocturno de sueño (horas)"
         }
       }
     },
     "error": {
-      "invalid_scan_interval": "El intervalo de sondeo debe estar entre 10 y 300 segundos."
+      "invalid_scan_interval": "El intervalo de sondeo debe estar entre 10 y 300 segundos.",
+      "invalid_sleep_target": "El objetivo nocturno debe estar entre 4 y 12 horas."
+    }
+  },
+  "services": {
+    "get_sleep_reports": {
+      "name": "Obtener informes de sueño",
+      "description": "Obtiene la respuesta completa de los informes de sueño de Sleepme sin guardarla en el historial de Home Assistant.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entrada de configuración",
+          "description": "La entrada de configuración de SleepMe cuyo token de API se utilizará."
+        },
+        "start_date": {
+          "name": "Fecha final",
+          "description": "La última fecha del informe que se solicitará."
+        },
+        "days_back": {
+          "name": "Días anteriores",
+          "description": "Número de días anteriores que se incluirán, de cero a seis."
+        },
+        "time_zone": {
+          "name": "Zona horaria",
+          "description": "Nombre de zona horaria IANA. De forma predeterminada se usa la zona de Home Assistant."
+        }
+      }
     }
   }
 }

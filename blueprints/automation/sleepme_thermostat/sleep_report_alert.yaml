@@ -1,0 +1,171 @@
+blueprint:
+  name: SleepMe Tracker - Sleep report threshold alert
+  description: >-
+    Evaluate the latest completed sleep report and run custom actions when one
+    or more transparent Home Assistant thresholds are missed. The action can
+    use the sleepme_alert_message template variable in notifications.
+  domain: automation
+  author: SleepMe Home Assistant integration
+  source_url: https://github.com/rsampayo/sleepme_thermostat/blob/main/blueprints/automation/sleepme_thermostat/sleep_report_alert.yaml
+  homeassistant:
+    min_version: 2026.1.0
+  input:
+    report_date_sensor:
+      name: Last Sleep Report sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: date
+    score_sensor:
+      name: Sleep Score sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    duration_sensor:
+      name: Total Sleep Duration sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: duration
+    efficiency_sensor:
+      name: Sleep Efficiency sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    latency_sensor:
+      name: Sleep Latency sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: duration
+    deep_sleep_sensor:
+      name: Deep Sleep Percentage sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    minimum_score:
+      name: Minimum sleep score
+      default: 70
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    minimum_sleep_hours:
+      name: Minimum sleep duration
+      default: 7
+      selector:
+        number:
+          min: 0
+          max: 16
+          step: 0.25
+          unit_of_measurement: h
+    minimum_efficiency:
+      name: Minimum sleep efficiency
+      default: 85
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    maximum_latency_minutes:
+      name: Maximum sleep latency
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 180
+          step: 5
+          unit_of_measurement: min
+    minimum_deep_sleep_percent:
+      name: Minimum deep sleep
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    evaluation_delay:
+      name: Report sensor settling delay
+      default:
+        seconds: 5
+      selector:
+        duration:
+    alert_actions:
+      name: Alert actions
+      description: Use {{ sleepme_alert_message }} in notification text.
+      selector:
+        action:
+
+mode: queued
+max: 5
+
+variables:
+  score_entity: !input score_sensor
+  duration_entity: !input duration_sensor
+  efficiency_entity: !input efficiency_sensor
+  latency_entity: !input latency_sensor
+  deep_entity: !input deep_sleep_sensor
+  min_score: !input minimum_score
+  min_sleep_hours: !input minimum_sleep_hours
+  min_efficiency: !input minimum_efficiency
+  max_latency_minutes: !input maximum_latency_minutes
+  min_deep_percent: !input minimum_deep_sleep_percent
+
+triggers:
+  - trigger: state
+    entity_id: !input report_date_sensor
+    not_from:
+      - unknown
+      - unavailable
+    not_to:
+      - unknown
+      - unavailable
+
+actions:
+  - delay: !input evaluation_delay
+  - condition: template
+    value_template: >-
+      {{ is_number(states(score_entity)) and
+         is_number(states(duration_entity)) and
+         is_number(states(efficiency_entity)) and
+         is_number(states(latency_entity)) and
+         is_number(states(deep_entity)) }}
+  - variables:
+      sleepme_alert_message: >-
+        {% set ns = namespace(items=[]) %}
+        {% set score = states(score_entity) | float(101) %}
+        {% set sleep_hours = states(duration_entity) | float(0) / 3600 %}
+        {% set efficiency = states(efficiency_entity) | float(101) %}
+        {% set latency_minutes = states(latency_entity) | float(0) / 60 %}
+        {% set deep_percent = states(deep_entity) | float(101) %}
+        {% if score < min_score %}
+          {% set ns.items = ns.items + ['sleep score ' ~ score | round(0) ~ '%'] %}
+        {% endif %}
+        {% if sleep_hours < min_sleep_hours %}
+          {% set ns.items = ns.items + ['sleep duration ' ~ sleep_hours | round(1) ~ ' h'] %}
+        {% endif %}
+        {% if efficiency < min_efficiency %}
+          {% set ns.items = ns.items + ['efficiency ' ~ efficiency | round(0) ~ '%'] %}
+        {% endif %}
+        {% if latency_minutes > max_latency_minutes %}
+          {% set ns.items = ns.items + ['latency ' ~ latency_minutes | round(0) ~ ' min'] %}
+        {% endif %}
+        {% if deep_percent < min_deep_percent %}
+          {% set ns.items = ns.items + ['deep sleep ' ~ deep_percent | round(0) ~ '%'] %}
+        {% endif %}
+        {{ 'Sleep targets missed: ' ~ ns.items | join(', ') if ns.items else '' }}
+  - condition: template
+    value_template: "{{ sleepme_alert_message | trim != '' }}"
+  - choose:
+      - conditions: "{{ true }}"
+        sequence: !input alert_actions

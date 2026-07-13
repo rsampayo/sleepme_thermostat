@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -12,6 +13,7 @@ from custom_components.sleepme_thermostat.sleepme_api import (
     SleepMeConnectionError,
     SleepMeRateLimited,
 )
+from custom_components.sleepme_thermostat.update_manager import _report_windows
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -38,6 +40,17 @@ def _entry() -> MockConfigEntry:
             "serial_number": "TEST-SERIAL",
         },
     )
+
+
+def test_report_windows_cover_thirty_days_without_overlap() -> None:
+    """The API's seven-date cap is paged into one exact 30-day range."""
+    assert _report_windows(date(2026, 7, 13), 30) == [
+        (date(2026, 7, 13), 6),
+        (date(2026, 7, 6), 6),
+        (date(2026, 6, 29), 6),
+        (date(2026, 6, 22), 6),
+        (date(2026, 6, 15), 1),
+    ]
 
 
 @pytest.fixture

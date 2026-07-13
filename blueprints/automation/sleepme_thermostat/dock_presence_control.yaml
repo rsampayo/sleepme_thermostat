@@ -1,0 +1,153 @@
+blueprint:
+  name: SleepMe Tracker + Dock - Presence-aware nightly control
+  description: >-
+    Start a Dock when bed occupancy occurs within a configurable overnight
+    window (including early bedtimes), start it at the scheduled time when the
+    bed is already occupied, and stop it after the bed becomes empty or at the
+    scheduled end plus an optional occupied-bed extension. Returning before the
+    empty delay cancels the stop naturally.
+  domain: automation
+  author: SleepMe Home Assistant integration
+  source_url: https://github.com/rsampayo/sleepme_thermostat/blob/main/blueprints/automation/sleepme_thermostat/dock_presence_control.yaml
+  homeassistant:
+    min_version: 2026.1.0
+  input:
+    occupancy_sensor:
+      name: Tracker occupancy sensor
+      description: Select the SleepMe Tracker User Detected binary sensor.
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    dock_climate:
+      name: Dock climate entity
+      selector:
+        entity:
+          filter:
+            domain: climate
+            integration: sleepme_thermostat
+    sleep_start_time:
+      name: Scheduled sleep start
+      default: "22:30:00"
+      selector:
+        time:
+    sleep_end_time:
+      name: Scheduled sleep end
+      default: "07:00:00"
+      selector:
+        time:
+    early_start_window:
+      name: Early-bed window
+      description: Minutes before the scheduled start during which occupancy starts the Dock.
+      default: 120
+      selector:
+        number:
+          min: 0
+          max: 360
+          step: 5
+          unit_of_measurement: min
+          mode: box
+    target_temperature:
+      name: Night target temperature
+      description: Enter this in Home Assistant's configured temperature unit.
+      default: 22
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 0.5
+          mode: box
+    empty_delay:
+      name: Stop after empty for
+      description: A return before this delay expires prevents a premature stop.
+      default:
+        minutes: 5
+      selector:
+        duration:
+    occupied_wake_extension:
+      name: Extension when still in bed at wake time
+      description: >-
+        Keep the Dock running this much longer when the Tracker is occupied at
+        the scheduled end. Set to zero for a strict end time.
+      default:
+        minutes: 60
+      selector:
+        duration:
+
+mode: restart
+
+variables:
+  occupancy_entity: !input occupancy_sensor
+  dock_entity: !input dock_climate
+  configured_start: !input sleep_start_time
+  configured_end: !input sleep_end_time
+  early_minutes: !input early_start_window
+  night_temperature: !input target_temperature
+
+triggers:
+  - trigger: state
+    entity_id: !input occupancy_sensor
+    to: "on"
+    id: occupied
+  - trigger: state
+    entity_id: !input occupancy_sensor
+    to: "off"
+    for: !input empty_delay
+    id: empty
+  - trigger: time
+    at: !input sleep_start_time
+    id: scheduled_start
+  - trigger: time
+    at: !input sleep_end_time
+    id: scheduled_end
+
+actions:
+  - choose:
+      - conditions: "{{ trigger.id == 'empty' }}"
+        sequence:
+          - action: climate.turn_off
+            target:
+              entity_id: !input dock_climate
+      - conditions: "{{ trigger.id == 'scheduled_end' }}"
+        sequence:
+          - if:
+              - condition: state
+                entity_id: !input occupancy_sensor
+                state: "on"
+            then:
+              - delay: !input occupied_wake_extension
+          - action: climate.turn_off
+            target:
+              entity_id: !input dock_climate
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'scheduled_start' or
+                 (trigger.id == 'occupied' and is_state(occupancy_entity, 'on')) }}
+          - condition: template
+            value_template: >-
+              {% set start_parts = configured_start.split(':') %}
+              {% set end_parts = configured_end.split(':') %}
+              {% set start_minute = (start_parts[0] | int) * 60 +
+                                    (start_parts[1] | int) %}
+              {% set end_minute = (end_parts[0] | int) * 60 +
+                                  (end_parts[1] | int) %}
+              {% set effective_start = (start_minute - early_minutes) % 1440 %}
+              {% set current_minute = now().hour * 60 + now().minute %}
+              {{ (effective_start <= end_minute and
+                  effective_start <= current_minute < end_minute) or
+                 (effective_start > end_minute and
+                  (current_minute >= effective_start or current_minute < end_minute)) }}
+          - condition: template
+            value_template: "{{ is_state(occupancy_entity, 'on') }}"
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input dock_climate
+            data:
+              hvac_mode: auto
+          - action: climate.set_temperature
+            target:
+              entity_id: !input dock_climate
+            data:
+              temperature: "{{ night_temperature }}"

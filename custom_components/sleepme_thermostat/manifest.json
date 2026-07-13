@@ -1,7 +1,7 @@
 {
   "domain": "sleepme_thermostat",
-  "name": "SleepMe (Chilipad Dock Pro)",
-  "codeowners": ["@rsampayo", "@mikesalz","@derekcentrico"],
+  "name": "SleepMe",
+  "codeowners": ["@rsampayo", "@mikesalz", "@derekcentrico"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/rsampayo/sleepme_thermostat",
@@ -11,5 +11,5 @@
   "loggers": ["custom_components.sleepme_thermostat"],
   "quality_scale": "silver",
   "requirements": [],
-  "version": "4.2.0"
+  "version": "4.3.0"
 }

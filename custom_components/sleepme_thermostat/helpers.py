@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_SLEEP_TRACKER
 
 
 def round_half_up(n: float) -> float:
     """Round a number to the nearest .0 or .5."""
     return round(n * 2) / 2
+
+
+def is_sleep_tracker(model: str | None) -> bool:
+    """Return whether a Sleepme model identifier is the ST501NA tracker."""
+    return bool(model and model.upper() == MODEL_SLEEP_TRACKER)
 
 
 def build_device_info(device_id: str, display_name: str, info: dict) -> DeviceInfo:

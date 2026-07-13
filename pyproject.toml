@@ -1,7 +1,7 @@
 [project]
 name = "sleepme_thermostat"
 version = "0.0.0"
-description = "Home Assistant custom integration for SleepMe Dock Pro"
+description = "Home Assistant integration for SleepMe Chilipad and Sleep Tracker devices"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.14"

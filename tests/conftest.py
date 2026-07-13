@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 pytest_plugins = ["pytest_homeassistant_custom_component"]
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
@@ -17,7 +21,20 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture
-def mock_sleepme_client() -> Generator[AsyncMock]:
+def tracker_status() -> dict:
+    """Return the fabricated ST501NA device-status fixture."""
+    return json.loads((FIXTURES / "tracker_status.json").read_text())
+
+
+@pytest.fixture
+def sleep_reports() -> list[dict]:
+    """Return fabricated sleep reports matching the live public API schema."""
+    payload = json.loads((FIXTURES / "sleep_reports.json").read_text())
+    return payload["reports"]
+
+
+@pytest.fixture
+def mock_sleepme_client(sleep_reports: list[dict]) -> Generator[AsyncMock]:
     """Mock SleepMeClient so no real network calls happen.
 
     Patches both import sites:
@@ -58,10 +75,12 @@ def mock_sleepme_client() -> Generator[AsyncMock]:
             autospec=True,
         ) as mock_um,
     ):
-        for mock_cls in (mock_init, mock_um):
-            instance = mock_cls.return_value
-            instance.get_device_status = AsyncMock(return_value=healthy_status)
-            instance.get_claimed_devices = AsyncMock(return_value=[])
-            instance.set_temp_level = AsyncMock(return_value={})
-            instance.set_device_status = AsyncMock(return_value={})
-        yield mock_init.return_value
+        instance = AsyncMock()
+        instance.get_device_status = AsyncMock(return_value=healthy_status)
+        instance.get_claimed_devices = AsyncMock(return_value=[])
+        instance.get_sleep_reports = AsyncMock(return_value=sleep_reports)
+        instance.set_temp_level = AsyncMock(return_value={})
+        instance.set_device_status = AsyncMock(return_value={})
+        mock_init.return_value = instance
+        mock_um.return_value = instance
+        yield instance

@@ -1,0 +1,84 @@
+{
+  "reports": [
+    {
+      "date": "2026-07-13",
+      "sessions": [],
+      "sleep_score_percent": 0
+    },
+    {
+      "date": "2026-07-11",
+      "sessions": [
+        {
+          "id": "session-older",
+          "enter_bed_time": "2026-07-10T22:30:00+02:00",
+          "exit_bed_time": "2026-07-11T06:30:00+02:00",
+          "total_session_duration": 480,
+          "in_bed_duration": 470,
+          "total_sleep_duration": 420,
+          "awake_duration": 50,
+          "light_sleep_duration": 210,
+          "rem_sleep_duration": 105,
+          "deep_sleep_duration": 105,
+          "sleep_latency": 15,
+          "hypnogram": {
+            "raw_hypnogram_segment_count": 2,
+            "segments": [
+              {"start": 0, "end": 15, "stage": "AWAKE"},
+              {"start": 15, "end": 480, "stage": "LIGHT_SLEEP"}
+            ]
+          }
+        }
+      ],
+      "sleep_score_percent": 80
+    },
+    {
+      "date": "2026-07-12",
+      "sessions": [
+        {
+          "id": "session-nap",
+          "enter_bed_time": "2026-07-12T14:00:00+02:00",
+          "exit_bed_time": "2026-07-12T16:00:00+02:00",
+          "total_session_duration": 120,
+          "in_bed_duration": 117,
+          "total_sleep_duration": 100,
+          "awake_duration": 17,
+          "light_sleep_duration": 50,
+          "rem_sleep_duration": 25,
+          "deep_sleep_duration": 25,
+          "sleep_latency": 8,
+          "hypnogram": {
+            "raw_hypnogram_segment_count": 3,
+            "segments": [
+              {"start": 0, "end": 8, "stage": "AWAKE"},
+              {"start": 8, "end": 60, "stage": "LIGHT_SLEEP"},
+              {"start": 60, "end": 120, "stage": "DEEP_SLEEP"}
+            ]
+          }
+        },
+        {
+          "id": "session-main",
+          "enter_bed_time": "2026-07-12T23:00:00+02:00",
+          "exit_bed_time": "2026-07-13T07:00:00+02:00",
+          "total_session_duration": 480,
+          "in_bed_duration": 467,
+          "total_sleep_duration": 420,
+          "awake_duration": 47,
+          "light_sleep_duration": 210,
+          "rem_sleep_duration": 105,
+          "deep_sleep_duration": 105,
+          "sleep_latency": 15,
+          "hypnogram": {
+            "raw_hypnogram_segment_count": 4,
+            "segments": [
+              {"start": 0, "end": 15, "stage": "AWAKE"},
+              {"start": 15, "end": 180, "stage": "LIGHT_SLEEP"},
+              {"start": 180, "end": 300, "stage": "REM_SLEEP"},
+              {"start": 300, "end": 480, "stage": "DEEP_SLEEP"}
+            ]
+          }
+        }
+      ],
+      "sleep_score_percent": 88
+    }
+  ]
+}
