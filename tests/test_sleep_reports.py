@@ -27,13 +27,13 @@ def test_summary_aggregates_every_session(sleep_reports: list[dict]) -> None:
     assert summary["sleep_score_percent"] == 88
     assert summary["session_count"] == 2
     assert summary["total_session_duration"] == 36000
-    assert summary["in_bed_duration"] == 35000
+    assert summary["in_bed_duration"] == 35040
     assert summary["total_sleep_duration"] == 31200
-    assert summary["awake_duration"] == 3800
+    assert summary["awake_duration"] == 3840
     assert summary["light_sleep_duration"] == 15600
     assert summary["rem_sleep_duration"] == 7800
     assert summary["deep_sleep_duration"] == 7800
-    assert summary["sleep_latency"] == 1400
+    assert summary["sleep_latency"] == 1380
     assert summary["hypnogram_segment_count"] == 7
     assert summary["enter_bed_time"] == datetime.fromisoformat(
         "2026-07-12T14:00:00+02:00"
@@ -41,9 +41,9 @@ def test_summary_aggregates_every_session(sleep_reports: list[dict]) -> None:
     assert summary["exit_bed_time"] == datetime.fromisoformat(
         "2026-07-13T07:00:00+02:00"
     )
-    assert summary["sleep_efficiency_percent"] == 89.1
-    assert summary["wake_after_sleep_onset"] == 2400
-    assert summary["awake_percent"] == 10.9
+    assert summary["sleep_efficiency_percent"] == 89.0
+    assert summary["wake_after_sleep_onset"] == 2460
+    assert summary["awake_percent"] == 11.0
     assert summary["light_sleep_percent"] == 50.0
     assert summary["rem_sleep_percent"] == 25.0
     assert summary["deep_sleep_percent"] == 25.0
@@ -78,6 +78,38 @@ def test_summary_uses_configurable_sleep_target(
     assert summary["sleep_goal_percent"] == 86.7
 
 
+def test_public_api_minutes_are_normalized_to_ha_seconds() -> None:
+    """Raw report minutes become seconds before entities and formulas use them."""
+    summary = summarize_sleep_report(
+        {
+            "date": "2026-07-12",
+            "sessions": [
+                {
+                    "total_session_duration": 90,
+                    "in_bed_duration": 75,
+                    "total_sleep_duration": 60,
+                    "awake_duration": 15,
+                    "sleep_latency": 5,
+                    "hypnogram": {
+                        "segments": [
+                            {"start": 0, "end": 5, "stage": "AWAKE"},
+                            {"start": 5, "end": 65, "stage": "LIGHT_SLEEP"},
+                            {"start": 65, "end": 90, "stage": "NO_DATA"},
+                        ]
+                    },
+                }
+            ],
+        }
+    )
+
+    assert summary["total_session_duration"] == 5400
+    assert summary["total_sleep_duration"] == 3600
+    assert summary["sleep_latency"] == 300
+    assert summary["wake_after_sleep_onset"] == 600
+    assert summary["longest_uninterrupted_sleep_duration"] == 3600
+    assert summary["sleep_debt"] == 7 * 3600
+
+
 def test_history_summarizes_seven_and_thirty_days(
     sleep_reports: list[dict],
 ) -> None:
@@ -89,7 +121,7 @@ def test_history_summarizes_seven_and_thirty_days(
         assert history[f"average_sleep_score_percent_{suffix}"] == 84.0
         assert history[f"average_total_sleep_duration_{suffix}"] == 28200.0
         assert history[f"average_sleep_efficiency_percent_{suffix}"] == 89.2
-        assert history[f"average_sleep_latency_{suffix}"] == 1150.0
+        assert history[f"average_sleep_latency_{suffix}"] == 1140.0
         assert history[f"average_deep_sleep_percent_{suffix}"] == 25.0
         assert history[f"average_rem_sleep_percent_{suffix}"] == 25.0
         assert history[f"average_awakening_count_{suffix}"] == 0.0
@@ -104,19 +136,19 @@ def test_hypnogram_derives_awakenings_and_longest_run() -> None:
         "date": "2026-07-12",
         "sessions": [
             {
-                "total_sleep_duration": 300,
-                "in_bed_duration": 450,
-                "awake_duration": 150,
-                "sleep_latency": 50,
+                "total_sleep_duration": 5,
+                "in_bed_duration": 7.5,
+                "awake_duration": 2.5,
+                "sleep_latency": 50 / 60,
                 "hypnogram": {
                     "raw_hypnogram_segment_count": 6,
                     "segments": [
-                        {"start": 0, "end": 50, "stage": "AWAKE"},
-                        {"start": 50, "end": 150, "stage": "LIGHT_SLEEP"},
-                        {"start": 150, "end": 250, "stage": "REM_SLEEP"},
-                        {"start": 250, "end": 300, "stage": "AWAKE"},
-                        {"start": 300, "end": 400, "stage": "DEEP_SLEEP"},
-                        {"start": 450, "end": 440, "stage": "AWAKE"},
+                        {"start": 0, "end": 1, "stage": "AWAKE"},
+                        {"start": 1, "end": 2, "stage": "LIGHT_SLEEP"},
+                        {"start": 2, "end": 4, "stage": "REM_SLEEP"},
+                        {"start": 4, "end": 5, "stage": "AWAKE"},
+                        {"start": 5, "end": 7, "stage": "DEEP_SLEEP"},
+                        {"start": 8, "end": 7, "stage": "AWAKE"},
                     ],
                 },
             }
@@ -125,7 +157,7 @@ def test_hypnogram_derives_awakenings_and_longest_run() -> None:
 
     summary = summarize_sleep_report(report)
     assert summary["awakening_count"] == 1
-    assert summary["longest_uninterrupted_sleep_duration"] == 200
+    assert summary["longest_uninterrupted_sleep_duration"] == 180
 
 
 def test_undefined_percentages_and_malformed_shapes_are_safe() -> None:
@@ -154,7 +186,7 @@ def test_clock_consistency_wraps_across_midnight() -> None:
                 {
                     "enter_bed_time": entered,
                     "exit_bed_time": exited,
-                    "total_sleep_duration": 3600,
+                    "total_sleep_duration": 60,
                 }
             ],
         }

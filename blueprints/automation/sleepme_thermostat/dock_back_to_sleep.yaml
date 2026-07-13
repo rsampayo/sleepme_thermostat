@@ -47,8 +47,10 @@ blueprint:
         duration:
     temperature_adjustment:
       name: Temporary temperature adjustment
-      description: Signed value in Home Assistant's temperature unit; negative is cooler.
-      default: -1
+      description: >-
+        Signed value in Home Assistant's temperature unit. Sleepme documents a
+        +5 °F warming step (about +2.8 °C); adjust this to your comfort and unit.
+      default: 2.5
       selector:
         number:
           min: -10

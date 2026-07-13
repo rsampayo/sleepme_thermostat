@@ -159,7 +159,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
             history_days=SLEEP_REPORT_HISTORY_DAYS,
             scan_interval=DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
         )
-        await report_coordinator.async_config_entry_first_refresh()
+        try:
+            await report_coordinator.async_config_entry_first_refresh()
+        except ConfigEntryNotReady as err:
+            # Reports are useful but should not take down live occupancy and
+            # environment data. CoordinatorEntity subscriptions will keep
+            # retrying; authentication failures still propagate as reauth.
+            _LOGGER.warning(
+                "Sleep reports unavailable during setup; live Tracker data will "
+                "remain available and reports will retry: %s",
+                err,
+            )
 
     entry.runtime_data = SleepMeData(
         client=client,

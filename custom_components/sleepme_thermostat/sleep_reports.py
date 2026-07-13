@@ -23,6 +23,7 @@ DURATION_FIELDS = (
 )
 
 SLEEP_STAGES = frozenset({"LIGHT_SLEEP", "REM_SLEEP", "DEEP_SLEEP"})
+SECONDS_PER_MINUTE = 60
 SECONDS_PER_DAY = 24 * 60 * 60
 
 
@@ -55,8 +56,13 @@ def summarize_sleep_report(
         ),
     }
 
+    # Sleepme's public report payload expresses every duration and hypnogram
+    # offset in minutes. Normalize once at the boundary so HA duration entities,
+    # history, goal/debt calculations, and automations consistently use seconds.
     for field in DURATION_FIELDS:
-        summary[field] = sum(_number(session.get(field)) for session in sessions)
+        summary[field] = sum(
+            _minutes_to_seconds(session.get(field)) for session in sessions
+        )
 
     enter_times = _session_datetimes(sessions, "enter_bed_time")
     exit_times = _session_datetimes(sessions, "exit_bed_time")
@@ -119,7 +125,7 @@ def summarize_sleep_report(
             # the main sleep; all additional sessions are exposed as nap metrics.
             "nap_count": len(supplemental_sessions),
             "nap_sleep_duration": sum(
-                _number(session.get("total_sleep_duration"))
+                _minutes_to_seconds(session.get("total_sleep_duration"))
                 for session in supplemental_sessions
             ),
         }
@@ -258,8 +264,8 @@ def _hypnogram_metrics(sessions: list[dict[str, Any]]) -> tuple[int, int | float
 
         for segment in segments:
             stage = segment["stage"]
-            start = _number(segment["start"])
-            end = _number(segment["end"])
+            start = _minutes_to_seconds(segment["start"])
+            end = _minutes_to_seconds(segment["end"])
             if end < start:
                 previous_stage = stage
                 run_start = run_end = None
@@ -345,6 +351,11 @@ def _optional_number(value: Any) -> int | float | None:
 def _number(value: Any) -> int | float:
     """Return numeric API values while treating absent/invalid values as zero."""
     return _optional_number(value) or 0
+
+
+def _minutes_to_seconds(value: Any) -> int | float:
+    """Normalize a numeric public-API minute value to seconds."""
+    return _number(value) * SECONDS_PER_MINUTE
 
 
 def _parse_datetime(value: Any) -> datetime | None:

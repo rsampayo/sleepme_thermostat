@@ -40,7 +40,7 @@
 - Derived sleep efficiency, wake after sleep onset, stage percentages, restorative sleep, awakenings, longest uninterrupted sleep, main-session timing, sleep midpoint, and additional-session metrics.
 - Configurable sleep goal with nightly goal percentage, sleep debt, and cumulative 7/30-day debt.
 - Seven- and thirty-day averages plus bedtime/wake-time consistency.
-- Four ready-to-import automation blueprints for occupancy actions, presence-aware Dock control, return-to-bed temperature adjustment, and sleep-report alerts.
+- Five ready-to-import automation blueprints for occupancy actions, presence-aware Dock control with an occupied wake-time extension, return-to-bed temperature adjustment, Warm Awake, and sleep-report alerts.
 - A response-only `sleepme_thermostat.get_sleep_reports` action returns the lossless raw reports, including session IDs and every hypnogram segment, without storing that large health payload in Home Assistant's recorder.
 - Sleep reports page over 30 days at a separate 30-minute polling cadence to protect the API request budget.
 
@@ -134,7 +134,7 @@ data:
 response_variable: sleepme_data
 ```
 
-The normal sensors intentionally keep hypnogram arrays out of state attributes so Home Assistant's recorder does not duplicate a large health-data payload every refresh. Sleepme's consumer app documents heart rate, HRV, and respiration, but the current public `/sleep-reports` response does not expose those fields; this integration cannot create values that the public API does not return.
+The raw API expresses report durations and hypnogram offsets in minutes. Sensor entities normalize them to seconds for Home Assistant's duration device class; the response-only action deliberately preserves the raw minute values. Normal sensors intentionally keep hypnogram arrays out of state attributes so Home Assistant's recorder does not duplicate a large health-data payload every refresh. Sleepme's consumer app documents heart rate, HRV, and respiration, but the current public `/sleep-reports` response does not expose those fields; this integration cannot create values that the public API does not return.
 
 ## Automation blueprints
 
@@ -145,6 +145,7 @@ Import any blueprint in *Settings → Automations & Scenes → Blueprints → Im
 | [Occupancy actions](blueprints/automation/sleepme_thermostat/tracker_occupancy_actions.yaml) | Run lights, scenes, locks, or notifications when bed occupancy changes |
 | [Presence-aware Dock control](blueprints/automation/sleepme_thermostat/dock_presence_control.yaml) | Early/late bedtime, scheduled start, early wake, and snooze-safe shutdown |
 | [Return-to-bed adjustment](blueprints/automation/sleepme_thermostat/dock_back_to_sleep.yaml) | Temporary configurable Dock adjustment after an overnight absence and return |
+| [Warm-awake routine](blueprints/automation/sleepme_thermostat/tracker_warm_awake.yaml) | Warm an occupied bed before wake time for a configurable duration, then stop |
 | [Sleep report alert](blueprints/automation/sleepme_thermostat/sleep_report_alert.yaml) | Notify on transparent score, duration, efficiency, latency, and deep-sleep thresholds |
 
 These are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml).

@@ -12,19 +12,19 @@
           "id": "session-older",
           "enter_bed_time": "2026-07-10T22:30:00+02:00",
           "exit_bed_time": "2026-07-11T06:30:00+02:00",
-          "total_session_duration": 28800,
-          "in_bed_duration": 28200,
-          "total_sleep_duration": 25200,
-          "awake_duration": 3000,
-          "light_sleep_duration": 12600,
-          "rem_sleep_duration": 6300,
-          "deep_sleep_duration": 6300,
-          "sleep_latency": 900,
+          "total_session_duration": 480,
+          "in_bed_duration": 470,
+          "total_sleep_duration": 420,
+          "awake_duration": 50,
+          "light_sleep_duration": 210,
+          "rem_sleep_duration": 105,
+          "deep_sleep_duration": 105,
+          "sleep_latency": 15,
           "hypnogram": {
             "raw_hypnogram_segment_count": 2,
             "segments": [
-              {"start": 0, "end": 900, "stage": "AWAKE"},
-              {"start": 900, "end": 28800, "stage": "LIGHT_SLEEP"}
+              {"start": 0, "end": 15, "stage": "AWAKE"},
+              {"start": 15, "end": 480, "stage": "LIGHT_SLEEP"}
             ]
           }
         }
@@ -38,20 +38,20 @@
           "id": "session-nap",
           "enter_bed_time": "2026-07-12T14:00:00+02:00",
           "exit_bed_time": "2026-07-12T16:00:00+02:00",
-          "total_session_duration": 7200,
-          "in_bed_duration": 7000,
-          "total_sleep_duration": 6000,
-          "awake_duration": 1000,
-          "light_sleep_duration": 3000,
-          "rem_sleep_duration": 1500,
-          "deep_sleep_duration": 1500,
-          "sleep_latency": 500,
+          "total_session_duration": 120,
+          "in_bed_duration": 117,
+          "total_sleep_duration": 100,
+          "awake_duration": 17,
+          "light_sleep_duration": 50,
+          "rem_sleep_duration": 25,
+          "deep_sleep_duration": 25,
+          "sleep_latency": 8,
           "hypnogram": {
             "raw_hypnogram_segment_count": 3,
             "segments": [
-              {"start": 0, "end": 500, "stage": "AWAKE"},
-              {"start": 500, "end": 3600, "stage": "LIGHT_SLEEP"},
-              {"start": 3600, "end": 7200, "stage": "DEEP_SLEEP"}
+              {"start": 0, "end": 8, "stage": "AWAKE"},
+              {"start": 8, "end": 60, "stage": "LIGHT_SLEEP"},
+              {"start": 60, "end": 120, "stage": "DEEP_SLEEP"}
             ]
           }
         },
@@ -59,21 +59,21 @@
           "id": "session-main",
           "enter_bed_time": "2026-07-12T23:00:00+02:00",
           "exit_bed_time": "2026-07-13T07:00:00+02:00",
-          "total_session_duration": 28800,
-          "in_bed_duration": 28000,
-          "total_sleep_duration": 25200,
-          "awake_duration": 2800,
-          "light_sleep_duration": 12600,
-          "rem_sleep_duration": 6300,
-          "deep_sleep_duration": 6300,
-          "sleep_latency": 900,
+          "total_session_duration": 480,
+          "in_bed_duration": 467,
+          "total_sleep_duration": 420,
+          "awake_duration": 47,
+          "light_sleep_duration": 210,
+          "rem_sleep_duration": 105,
+          "deep_sleep_duration": 105,
+          "sleep_latency": 15,
           "hypnogram": {
             "raw_hypnogram_segment_count": 4,
             "segments": [
-              {"start": 0, "end": 900, "stage": "AWAKE"},
-              {"start": 900, "end": 10800, "stage": "LIGHT_SLEEP"},
-              {"start": 10800, "end": 18000, "stage": "REM_SLEEP"},
-              {"start": 18000, "end": 28800, "stage": "DEEP_SLEEP"}
+              {"start": 0, "end": 15, "stage": "AWAKE"},
+              {"start": 15, "end": 180, "stage": "LIGHT_SLEEP"},
+              {"start": 180, "end": 300, "stage": "REM_SLEEP"},
+              {"start": 300, "end": 480, "stage": "DEEP_SLEEP"}
             ]
           }
         }

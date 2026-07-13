@@ -133,6 +133,13 @@ triggers:
 
 actions:
   - delay: !input evaluation_delay
+  - condition: template
+    value_template: >-
+      {{ is_number(states(score_entity)) and
+         is_number(states(duration_entity)) and
+         is_number(states(efficiency_entity)) and
+         is_number(states(latency_entity)) and
+         is_number(states(deep_entity)) }}
   - variables:
       sleepme_alert_message: >-
         {% set ns = namespace(items=[]) %}

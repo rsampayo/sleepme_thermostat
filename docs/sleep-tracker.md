@@ -7,6 +7,8 @@ The ST501NA exposes two useful data paths through Sleepme's public API:
 
 Home Assistant polls live status at the configured device interval. It fetches reports every 30 minutes in five non-overlapping API-sized windows, yielding 30 calendar days of history. Reports generally appear only after Sleepme finalizes a session, so report sensors are not real-time sleep-stage sensors.
 
+The public report payload uses minutes for durations and hypnogram offsets. The integration converts these values to seconds at the aggregation boundary, matching Home Assistant's duration entity convention. The lossless response action returns the raw API values unchanged.
+
 ## Direct and derived sensors
 
 | Feature | Source or formula | Classification |
@@ -35,8 +37,11 @@ The personal sleep target is configured under *Settings â†’ Devices & Services â
 | Sleepme-style capability | Pure HA result |
 |---|---|
 | Bed presence routines | Fully reproducible from live occupancy using the included occupancy blueprint |
-| Schedule plus early/late bedtime Dock response | Reproducible with occupancy, time triggers, and the presence-aware Dock blueprint |
-| Wake-early and snooze behavior | Reproducible: delayed empty triggers cancel on a quick return; scheduled end remains deterministic |
+| Early to bed | Reproducible: occupancy within a configurable pre-bedtime window starts the Dock |
+| Late to bed | Reproducible: an empty bed stays off at bedtime and later occupancy starts the Dock inside the overnight window |
+| Wake up early | Reproducible: confirmed empty-bed state stops the Dock before the scheduled end |
+| Snooze | Reproducible: occupancy at wake time uses a configurable extension; a later empty event can stop it sooner |
+| Warm Awake | Reproducible with the included occupied-bed warm-awake blueprint; lead time, temperature, and duration remain explicit HA inputs |
 | Return-to-bed temperature assistance | Approximate, user-controlled rule via the included temporary-adjustment blueprint |
 | Sleep-quality summaries and threshold alerts | Reproducible from finalized report sensors |
 | Trend dashboards and correlations with room climate | Reproducible using Recorder/history/statistics and HA dashboards |
@@ -47,11 +52,12 @@ The personal sleep target is configured under *Settings â†’ Devices & Services â
 
 ## Included blueprints
 
-The repository ships four automation blueprints under `blueprints/automation/sleepme_thermostat/`. Import the desired raw GitHub URL in HA's Blueprint UI after this branch is merged.
+The repository ships five automation blueprints under `blueprints/automation/sleepme_thermostat/`. Import the desired raw GitHub URL in HA's Blueprint UI after this branch is merged.
 
 - `tracker_occupancy_actions.yaml`: independent occupied/empty delays and arbitrary action selectors.
-- `dock_presence_control.yaml`: an overnight window, early-start allowance, scheduled start/end, occupancy gating, and delayed shutdown.
-- `dock_back_to_sleep.yaml`: waits for a return after an overnight absence, applies a signed target-temperature adjustment, and restores the original setpoint.
+- `dock_presence_control.yaml`: an overnight window, early-start allowance, scheduled start/end, occupancy gating, delayed empty shutdown, and configurable extension while still occupied at wake time.
+- `dock_back_to_sleep.yaml`: waits for a return after an overnight absence, applies a signed target-temperature adjustment, and restores the original setpoint. Its default warming step approximates Sleepme's documented +5 Â°F behavior in Celsius-oriented installations and remains user-configurable.
+- `tracker_warm_awake.yaml`: starts before wake time only when the bed is occupied, warms for the chosen duration, then stops the Dock.
 - `sleep_report_alert.yaml`: evaluates a finalized report against visible thresholds and exposes `sleepme_alert_message` to notification actions.
 
 The return-to-bed automation is intentionally described as a heuristic rather than Hiber-AI. Start with a small signed adjustment appropriate for your HA temperature unit, observe comfort, and disable it if it conflicts with another Dock schedule.

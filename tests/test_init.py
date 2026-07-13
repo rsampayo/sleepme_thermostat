@@ -5,6 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 from custom_components.sleepme_thermostat.const import API_URL, DOMAIN
+from custom_components.sleepme_thermostat.sleepme_api import (
+    SleepMeAuthError,
+    SleepMeConnectionError,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -115,9 +119,9 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
     assert state_for("sensor", "sleep_report_total_sleep_duration").state == "31200"
     assert state_for("sensor", "sleep_report_hypnogram_segment_count").state == "7"
     assert state_for("sensor", "sleep_report_sleep_efficiency_percent").state == (
-        "89.1"
+        "89.0"
     )
-    assert state_for("sensor", "sleep_report_wake_after_sleep_onset").state == "2400"
+    assert state_for("sensor", "sleep_report_wake_after_sleep_onset").state == "2460"
     assert state_for("sensor", "sleep_report_deep_sleep_percent").state == "25.0"
     assert state_for("sensor", "sleep_report_awakening_count").state == "0"
     assert (
@@ -147,6 +151,87 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
             f"{DOMAIN}_{device_id}_thermostat",
         )
         is None
+    )
+
+
+async def test_tracker_live_entities_survive_report_endpoint_failure(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """A transient report outage does not hide live occupancy/environment data."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    mock_sleepme_client.get_sleep_reports.side_effect = SleepMeConnectionError(
+        "temporary report outage"
+    )
+    device_id = "tracker-report-outage"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_report_outage",
+        version=5,
+        unique_id=device_id,
+        title="Sleep Tracker Resilient",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": device_id,
+            "firmware_version": "2.3.4-test",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-TEST-SERIAL",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.report_coordinator is not None
+    assert entry.runtime_data.report_coordinator.last_update_success is False
+    registry = er.async_get(hass)
+    occupancy_id = registry.async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{DOMAIN}_{device_id}_user_detected"
+    )
+    report_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{DOMAIN}_{device_id}_sleep_report_date"
+    )
+    assert occupancy_id is not None
+    assert hass.states.get(occupancy_id).state == "on"
+    assert report_id is not None
+    assert hass.states.get(report_id).state == "unavailable"
+
+
+async def test_tracker_report_auth_failure_still_triggers_reauth(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """Report authentication failures are never hidden by outage isolation."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    mock_sleepme_client.get_sleep_reports.side_effect = SleepMeAuthError(
+        "revoked token"
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_report_auth",
+        version=5,
+        unique_id="tracker-report-auth",
+        title="Sleep Tracker Auth",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": "tracker-report-auth",
+            "model": "ST501NA",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert any(
+        flow["context"].get("source") == "reauth"
+        for flow in hass.config_entries.flow.async_progress_by_handler(DOMAIN)
     )
 
 

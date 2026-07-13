@@ -4,7 +4,8 @@ blueprint:
     Start a Dock when bed occupancy occurs within a configurable overnight
     window (including early bedtimes), start it at the scheduled time when the
     bed is already occupied, and stop it after the bed becomes empty or at the
-    scheduled end. Returning before the empty delay cancels the stop naturally.
+    scheduled end plus an optional occupied-bed extension. Returning before the
+    empty delay cancels the stop naturally.
   domain: automation
   author: SleepMe Home Assistant integration
   source_url: https://github.com/rsampayo/sleepme_thermostat/blob/main/blueprints/automation/sleepme_thermostat/dock_presence_control.yaml
@@ -63,6 +64,15 @@ blueprint:
         minutes: 5
       selector:
         duration:
+    occupied_wake_extension:
+      name: Extension when still in bed at wake time
+      description: >-
+        Keep the Dock running this much longer when the Tracker is occupied at
+        the scheduled end. Set to zero for a strict end time.
+      default:
+        minutes: 60
+      selector:
+        duration:
 
 mode: restart
 
@@ -93,8 +103,19 @@ triggers:
 
 actions:
   - choose:
-      - conditions: "{{ trigger.id in ['empty', 'scheduled_end'] }}"
+      - conditions: "{{ trigger.id == 'empty' }}"
         sequence:
+          - action: climate.turn_off
+            target:
+              entity_id: !input dock_climate
+      - conditions: "{{ trigger.id == 'scheduled_end' }}"
+        sequence:
+          - if:
+              - condition: state
+                entity_id: !input occupancy_sensor
+                state: "on"
+            then:
+              - delay: !input occupied_wake_extension
           - action: climate.turn_off
             target:
               entity_id: !input dock_climate
