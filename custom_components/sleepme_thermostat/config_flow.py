@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
+from homeassistant.const import UnitOfTime
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -238,7 +239,7 @@ class SleepMeOptionsFlowHandler(OptionsFlow):
                     min=0,
                     max=86400,
                     step=1,
-                    unit_of_measurement="seconds",
+                    unit_of_measurement=UnitOfTime.SECONDS,
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
@@ -253,7 +254,7 @@ class SleepMeOptionsFlowHandler(OptionsFlow):
                         min=0,
                         max=24,
                         step=0.25,
-                        unit_of_measurement="hours",
+                        unit_of_measurement=UnitOfTime.HOURS,
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 )

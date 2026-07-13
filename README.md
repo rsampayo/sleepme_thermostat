@@ -150,7 +150,7 @@ Import any blueprint in *Settings → Automations & Scenes → Blueprints → Im
 
 These are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml).
 
-All HA-supported frontend languages can load and use the integration. Entity and option text uses HA's translation system; Spanish is included and every other locale receives HA's built-in English fallback instead of broken or missing labels.
+All HA-supported frontend languages can load and use the integration. Entity and option text uses HA's translation system; Spanish and complete native Hungarian translations are included, while every remaining locale receives HA's built-in English fallback instead of broken or missing labels.
 
 ## Troubleshooting
 
@@ -183,7 +183,7 @@ Older HA versions may work but are not in the CI matrix.
 
 Contributions are welcome! Please open an issue or submit a pull request.
 
-When editing translations, edit `custom_components/sleepme_thermostat/strings.json` first (the source of truth), then copy verbatim to `custom_components/sleepme_thermostat/translations/en.json`. CI fails if the two files diverge. Other language files (e.g. `es.json`) are hand-maintained from `strings.json`.
+When editing translations, edit `custom_components/sleepme_thermostat/strings.json` first (the source of truth), then copy verbatim to `custom_components/sleepme_thermostat/translations/en.json`. CI fails if the two files diverge. Other language files (such as `es.json` and `hu.json`) are hand-maintained from `strings.json`.
 
 ## License
 

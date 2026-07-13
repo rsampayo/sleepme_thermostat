@@ -16,6 +16,7 @@ from custom_components.sleepme_thermostat.sleepme_api import (
     SleepMeConnectionError,
 )
 from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_USER
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -395,6 +396,11 @@ async def test_tracker_options_include_sleep_target(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
+    option_selectors = list(result["data_schema"].schema.values())
+    assert [option.config["unit_of_measurement"] for option in option_selectors] == [
+        UnitOfTime.SECONDS,
+        UnitOfTime.HOURS,
+    ]
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {CONF_SCAN_INTERVAL: 30, CONF_SLEEP_TARGET_HOURS: 7.5},

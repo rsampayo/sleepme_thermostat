@@ -31,6 +31,7 @@ BLUEPRINTS = (
     Path(__file__).parents[1] / "blueprints" / "automation" / "sleepme_thermostat"
 )
 STRINGS = Path(__file__).parents[1] / "custom_components" / DOMAIN / "strings.json"
+TRANSLATIONS = STRINGS.parent / "translations"
 
 BLUEPRINT_INPUTS = {
     "tracker_occupancy_actions.yaml": {
@@ -63,6 +64,19 @@ BLUEPRINT_INPUTS = {
         ],
     },
 }
+
+
+def _flatten_strings(data: dict, prefix: str = "") -> dict[str, str]:
+    """Flatten nested translation strings into dotted leaf paths."""
+    flattened: dict[str, str] = {}
+    for key, value in data.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            flattened.update(_flatten_strings(value, path))
+        else:
+            assert isinstance(value, str), path
+            flattened[path] = value
+    return flattened
 
 
 def _substituted_config(filename: str, overrides: dict | None = None) -> dict:
@@ -378,12 +392,8 @@ async def test_report_alert_skips_incomplete_sensor_updates(
 async def test_entity_translations_fall_back_for_every_ha_language(
     hass: HomeAssistant,
 ) -> None:
-    """Every frontend locale resolves every report entity and option string."""
+    """Every frontend locale resolves localized or fallback integration strings."""
     source_strings = json.loads(STRINGS.read_text())
-    entity_names = {
-        f"component.{DOMAIN}.entity.sensor.{key}.name": value["name"]
-        for key, value in source_strings["entity"]["sensor"].items()
-    }
     required_option_keys = {
         f"component.{DOMAIN}.options.step.init.title",
         f"component.{DOMAIN}.options.step.init.description",
@@ -394,6 +404,17 @@ async def test_entity_translations_fall_back_for_every_ha_language(
     }
 
     for language in LANGUAGES:
+        localized_entities = source_strings["entity"]["sensor"]
+        locale_path = TRANSLATIONS / f"{language}.json"
+        if locale_path.exists():
+            locale_strings = json.loads(locale_path.read_text())
+            localized_entities = locale_strings.get("entity", {}).get(
+                "sensor", localized_entities
+            )
+        entity_names = {
+            f"component.{DOMAIN}.entity.sensor.{key}.name": value["name"]
+            for key, value in localized_entities.items()
+        }
         entity_strings = await translation.async_get_translations(
             hass, language, "entity", {DOMAIN}
         )
@@ -406,3 +427,34 @@ async def test_entity_translations_fall_back_for_every_ha_language(
         )
         assert required_option_keys <= option_strings.keys(), language
         assert all(option_strings[key] for key in required_option_keys), language
+
+
+async def test_hungarian_translations_are_complete_and_native(
+    hass: HomeAssistant,
+) -> None:
+    """Hungarian covers every source leaf and is loaded by HA without fallback."""
+    assert "hu" in LANGUAGES
+    source_strings = json.loads(STRINGS.read_text())
+    hungarian = json.loads((TRANSLATIONS / "hu.json").read_text())
+
+    assert _flatten_strings(hungarian).keys() == _flatten_strings(source_strings).keys()
+    assert all(_flatten_strings(hungarian).values())
+    assert hungarian["config"]["step"]["user"]["title"] == ("SleepMe-eszköz hozzáadása")
+    assert hungarian["entity"]["sensor"]["sleep_debt"]["name"] == "Alvásadósság"
+    assert hungarian["services"]["get_sleep_reports"]["name"] == (
+        "Alvásjelentések lekérése"
+    )
+
+    for category in ("title", "config", "entity", "options", "services"):
+        category_data = hungarian[category]
+        if isinstance(category_data, str):
+            expected = {f"component.{DOMAIN}.{category}": category_data}
+        else:
+            expected = {
+                f"component.{DOMAIN}.{category}.{key}": value
+                for key, value in _flatten_strings(category_data).items()
+            }
+        loaded = await translation.async_get_translations(
+            hass, "hu", category, {DOMAIN}
+        )
+        assert {key: loaded.get(key) for key in expected} == expected

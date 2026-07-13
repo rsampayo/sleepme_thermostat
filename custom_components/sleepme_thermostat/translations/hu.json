@@ -1,0 +1,145 @@
+{
+  "title": "SleepMe",
+  "config": {
+    "step": {
+      "user": {
+        "title": "SleepMe-eszköz hozzáadása",
+        "description": "A folytatáshoz add meg az API-tokenedet.",
+        "data": {
+          "api_token": "API-token"
+        },
+        "data_description": {
+          "api_token": "Add meg a SleepMe által biztosított API-tokent."
+        }
+      },
+      "select_device": {
+        "title": "SleepMe-eszköz kiválasztása",
+        "description": "Válaszd ki a hozzáadni kívánt Dock Pro, Chilipad vagy Sleep Tracker eszközt.",
+        "data": {
+          "device_id": "Ágy / eszköz"
+        },
+        "data_description": {
+          "device_id": "Az eszközt a SleepMe alkalmazásban megadott neve alapján válaszd ki."
+        }
+      },
+      "reauth_confirm": {
+        "title": "SleepMe újbóli hitelesítése",
+        "description": "A SleepMe API-tokened már nem érvényes. A kapcsolat helyreállításához adj meg egy új tokent.",
+        "data": {
+          "api_token": "API-token"
+        },
+        "data_description": {
+          "api_token": "Illeszd be a SleepMe Developer API felületén létrehozott új tokent."
+        }
+      }
+    },
+    "error": {
+      "invalid_token": "Érvénytelen API-token. Próbáld újra.",
+      "cannot_connect": "Nem sikerült kapcsolódni a SleepMe API-hoz.",
+      "no_devices_found": "Ehhez az API-tokenhez nem található eszköz.",
+      "cannot_fetch_device_info": "Nem sikerült lekérni az eszköz adatait.",
+      "device_not_found_for_token": "Ez a token nem biztosít hozzáférést az eredetileg beállított eszközhöz."
+    },
+    "abort": {
+      "already_configured": "Ez az eszköz már be van állítva.",
+      "reauth_successful": "Az újbóli hitelesítés sikerült."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "date": { "name": "Legutóbbi alvásjelentés" },
+      "sleep_score_percent": { "name": "Alváspontszám" },
+      "session_count": { "name": "Alvási időszakok száma" },
+      "enter_bed_time": { "name": "Ágyba fekvés" },
+      "exit_bed_time": { "name": "Felkelés az ágyból" },
+      "total_session_duration": { "name": "Alvási időszak teljes hossza" },
+      "in_bed_duration": { "name": "Ágyban töltött idő" },
+      "total_sleep_duration": { "name": "Teljes alvásidő" },
+      "awake_duration": { "name": "Ébren töltött idő" },
+      "light_sleep_duration": { "name": "Könnyű alvás időtartama" },
+      "rem_sleep_duration": { "name": "REM-alvás időtartama" },
+      "deep_sleep_duration": { "name": "Mélyalvás időtartama" },
+      "sleep_latency": { "name": "Elalvási idő" },
+      "hypnogram_segment_count": { "name": "Hipnogramszakaszok száma" },
+      "sleep_efficiency_percent": { "name": "Alváshatékonyság" },
+      "wake_after_sleep_onset": { "name": "Elalvás utáni ébrenlét" },
+      "restorative_sleep_duration": { "name": "Regeneráló alvás időtartama" },
+      "sleep_debt": { "name": "Alvásadósság" },
+      "sleep_goal_percent": { "name": "Alváscél teljesülése" },
+      "awakening_count": { "name": "Ébredések száma" },
+      "longest_uninterrupted_sleep_duration": { "name": "Leghosszabb megszakítás nélküli alvás" },
+      "main_enter_bed_time": { "name": "Fő alvás: ágyba fekvés" },
+      "main_exit_bed_time": { "name": "Fő alvás: felkelés az ágyból" },
+      "sleep_midpoint": { "name": "Alvás közepe" },
+      "nap_count": { "name": "További alvási időszakok száma" },
+      "nap_sleep_duration": { "name": "További alvások időtartama" },
+      "awake_percent": { "name": "Ébrenlét aránya" },
+      "light_sleep_percent": { "name": "Könnyű alvás aránya" },
+      "rem_sleep_percent": { "name": "REM-alvás aránya" },
+      "deep_sleep_percent": { "name": "Mélyalvás aránya" },
+      "restorative_sleep_percent": { "name": "Regeneráló alvás aránya" },
+      "tracked_nights_7d": { "name": "Követett éjszakák száma (7 nap)" },
+      "average_sleep_score_percent_7d": { "name": "Átlagos alváspontszám (7 nap)" },
+      "average_total_sleep_duration_7d": { "name": "Átlagos alvásidő (7 nap)" },
+      "average_sleep_efficiency_percent_7d": { "name": "Átlagos alváshatékonyság (7 nap)" },
+      "average_sleep_latency_7d": { "name": "Átlagos elalvási idő (7 nap)" },
+      "average_deep_sleep_percent_7d": { "name": "Mélyalvás átlagos aránya (7 nap)" },
+      "average_rem_sleep_percent_7d": { "name": "REM-alvás átlagos aránya (7 nap)" },
+      "average_awakening_count_7d": { "name": "Ébredések átlagos száma (7 nap)" },
+      "cumulative_sleep_debt_7d": { "name": "Összesített alvásadósság (7 nap)" },
+      "bedtime_consistency_7d": { "name": "Lefekvési idő ingadozása (7 nap)" },
+      "wake_time_consistency_7d": { "name": "Felkelési idő ingadozása (7 nap)" },
+      "tracked_nights_30d": { "name": "Követett éjszakák száma (30 nap)" },
+      "average_sleep_score_percent_30d": { "name": "Átlagos alváspontszám (30 nap)" },
+      "average_total_sleep_duration_30d": { "name": "Átlagos alvásidő (30 nap)" },
+      "average_sleep_efficiency_percent_30d": { "name": "Átlagos alváshatékonyság (30 nap)" },
+      "average_sleep_latency_30d": { "name": "Átlagos elalvási idő (30 nap)" },
+      "average_deep_sleep_percent_30d": { "name": "Mélyalvás átlagos aránya (30 nap)" },
+      "average_rem_sleep_percent_30d": { "name": "REM-alvás átlagos aránya (30 nap)" },
+      "average_awakening_count_30d": { "name": "Ébredések átlagos száma (30 nap)" },
+      "cumulative_sleep_debt_30d": { "name": "Összesített alvásadósság (30 nap)" },
+      "bedtime_consistency_30d": { "name": "Lefekvési idő ingadozása (30 nap)" },
+      "wake_time_consistency_30d": { "name": "Felkelési idő ingadozása (30 nap)" }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SleepMe-eszköz beállításai",
+        "description": "Állítsd be, milyen gyakran kérdezze le a Home Assistant a SleepMe API-t. Sleep Tracker használatakor azt az egyéni éjszakai alváscélt is megadhatod, amelyből a Home Assistant kiszámítja az alváscél és az alvásadósság érzékelőinek értékét.",
+        "data": {
+          "scan_interval": "Lekérdezési időköz (másodperc)",
+          "sleep_target_hours": "Éjszakai alváscél (óra)"
+        }
+      }
+    },
+    "error": {
+      "invalid_scan_interval": "A lekérdezési időköznek 10 és 300 másodperc között kell lennie.",
+      "invalid_sleep_target": "Az éjszakai alváscélnak 4 és 12 óra között kell lennie."
+    }
+  },
+  "services": {
+    "get_sleep_reports": {
+      "name": "Alvásjelentések lekérése",
+      "description": "Lekéri a fiókhoz tartozó SleepMe-alvásjelentések teljes, nyers adatkészletét. A válasz tartalmazza az alvási időszakokat és az egyes hipnogramok szakaszait; a Home Assistant nem menti az előzményekbe.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurációs bejegyzés",
+          "description": "A betöltött SleepMe konfigurációs bejegyzés, amelyhez tartozó API-tokent a művelet használja."
+        },
+        "start_date": {
+          "name": "Záró dátum",
+          "description": "A lekérendő utolsó jelentés dátuma. Alapértelmezés szerint a kiválasztott időzóna szerinti mai nap."
+        },
+        "days_back": {
+          "name": "Korábbi napok száma",
+          "description": "A záró dátum előtti napok száma nullától hatig."
+        },
+        "time_zone": {
+          "name": "Időzóna",
+          "description": "IANA-időzónanév. Alapértelmezés szerint a Home Assistant beállított időzónája."
+        }
+      }
+    }
+  }
+}

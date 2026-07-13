@@ -68,4 +68,4 @@ Normal entities expose only scalar values. Raw hypnogram arrays and session IDs 
 
 ## Language behavior
 
-HA currently advertises 65 frontend locales. Entity and options strings use HA translation keys. The project includes English source strings and Spanish translations; every remaining HA locale is tested to resolve the English fallback, so controls and names remain usable without pretending that unreviewed machine translations are native-quality localization.
+HA currently advertises 65 frontend locales. Entity and options strings use HA translation keys. The project includes English source strings, Spanish translations, and complete native Hungarian translations; every remaining HA locale is tested to resolve the English fallback, so controls and names remain usable without pretending that unreviewed machine translations are native-quality localization.
