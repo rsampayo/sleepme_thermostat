@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -22,6 +22,7 @@ from homeassistant.config_entries import ConfigEntryAuthFailed
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .const import MAX_SLEEP_REPORT_DAYS_BACK
 from .sleepme import SleepMeClient
 from .sleepme_api import (
     SleepMeAuthError,
@@ -82,7 +83,7 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
 
 
 class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
-    """Fetch the account's seven-day sleep-report window at a gentle cadence."""
+    """Fetch account sleep-report history in API-sized date windows."""
 
     def __init__(
         self,
@@ -91,12 +92,12 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
         token: str,
         *,
         time_zone: str,
-        days_back: int,
+        history_days: int,
         scan_interval: int,
     ) -> None:
         self.client = SleepMeClient(hass, api_url, token)
         self.time_zone = time_zone
-        self.days_back = days_back
+        self.history_days = history_days
         super().__init__(
             hass,
             _LOGGER,
@@ -105,11 +106,43 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
         )
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
-        """Fetch reports through today in Home Assistant's configured zone."""
-        return await _async_fetch(
-            self.client.get_sleep_reports(
-                start_date=datetime.now(ZoneInfo(self.time_zone)).date(),
-                days_back=self.days_back,
-                time_zone=self.time_zone,
+        """Fetch and merge non-overlapping report windows through today."""
+        end_date = datetime.now(ZoneInfo(self.time_zone)).date()
+        reports_by_date: dict[str, dict[str, Any]] = {}
+        undated_reports: list[dict[str, Any]] = []
+
+        for window_end, days_back in _report_windows(end_date, self.history_days):
+            reports = await _async_fetch(
+                self.client.get_sleep_reports(
+                    start_date=window_end,
+                    days_back=days_back,
+                    time_zone=self.time_zone,
+                )
             )
-        )
+            for report in reports:
+                report_date = report.get("date")
+                if isinstance(report_date, str):
+                    reports_by_date[report_date] = report
+                else:
+                    undated_reports.append(report)
+
+        return [
+            *(reports_by_date[key] for key in sorted(reports_by_date)),
+            *undated_reports,
+        ]
+
+
+def _report_windows(end_date: date, history_days: int) -> list[tuple[date, int]]:
+    """Split a history range into the endpoint's inclusive seven-day windows."""
+    windows: list[tuple[date, int]] = []
+    remaining = max(history_days, 1)
+    window_end = end_date
+    max_window_days = MAX_SLEEP_REPORT_DAYS_BACK + 1
+
+    while remaining:
+        window_days = min(remaining, max_window_days)
+        windows.append((window_end, window_days - 1))
+        remaining -= window_days
+        window_end -= timedelta(days=window_days)
+
+    return windows

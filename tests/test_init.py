@@ -61,6 +61,9 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
     tracker_status: dict,
 ) -> None:
     """ST501NA gets tracker entities, report entities, and no climate entity."""
+    # German is intentionally not bundled: HA must resolve the English source
+    # fallback, proving unsupported integration locales remain fully usable.
+    hass.config.language = "de"
     mock_sleepme_client.get_device_status.return_value = tracker_status
     device_id = "tracker-device"
     entry = MockConfigEntry(
@@ -77,6 +80,7 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
             "model": "ST501NA",
             "serial_number": "TRACKER-TEST-SERIAL",
         },
+        options={"sleep_target_hours": 10.0},
     )
     entry.add_to_hass(hass)
 
@@ -110,6 +114,31 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
     assert state_for("sensor", "sleep_report_session_count").state == "2"
     assert state_for("sensor", "sleep_report_total_sleep_duration").state == "31200"
     assert state_for("sensor", "sleep_report_hypnogram_segment_count").state == "7"
+    assert state_for("sensor", "sleep_report_sleep_efficiency_percent").state == (
+        "89.1"
+    )
+    assert state_for("sensor", "sleep_report_wake_after_sleep_onset").state == "2400"
+    assert state_for("sensor", "sleep_report_deep_sleep_percent").state == "25.0"
+    assert state_for("sensor", "sleep_report_awakening_count").state == "0"
+    assert (
+        state_for("sensor", "sleep_report_longest_uninterrupted_sleep_duration").state
+        == "27900"
+    )
+    assert state_for("sensor", "sleep_report_nap_count").state == "1"
+    assert state_for("sensor", "sleep_report_sleep_debt").state == "4800.0"
+    assert state_for("sensor", "sleep_report_sleep_goal_percent").state == "86.7"
+    assert state_for("sensor", "sleep_report_tracked_nights_7d").state == "2"
+    assert (
+        state_for("sensor", "sleep_report_average_sleep_score_percent_30d").state
+        == "84.0"
+    )
+    assert state_for("sensor", "sleep_report_bedtime_consistency_7d").state == ("15.0")
+    assert (
+        state_for("sensor", "sleep_report_sleep_efficiency_percent").attributes[
+            "friendly_name"
+        ]
+        == "Sleep Tracker Bedroom Sleep Efficiency"
+    )
 
     assert (
         registry.async_get_entity_id(

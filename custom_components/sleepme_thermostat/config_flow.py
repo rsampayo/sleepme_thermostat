@@ -14,10 +14,14 @@ from homeassistant.helpers import selector
 from .const import (
     API_URL,
     CONF_SCAN_INTERVAL,
+    CONF_SLEEP_TARGET_HOURS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SLEEP_TARGET_HOURS,
     DOMAIN,
     MAX_SCAN_INTERVAL,
+    MAX_SLEEP_TARGET_HOURS,
     MIN_SCAN_INTERVAL,
+    MIN_SLEEP_TARGET_HOURS,
 )
 from .helpers import is_sleep_tracker
 from .sleepme import SleepMeClient
@@ -195,7 +199,7 @@ class SleepMeThermostatConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SleepMeOptionsFlowHandler(OptionsFlow):
-    """Options flow: poll interval only (Phase 2).
+    """Options flow for polling and tracker-derived sleep goals.
 
     `self.config_entry` is set automatically by HA's framework — do not assign
     it in __init__ (the attribute is read-only in HA Core 2024.12+).
@@ -206,11 +210,18 @@ class SleepMeOptionsFlowHandler(OptionsFlow):
     ) -> ConfigFlowResult:
         """Show + handle the options form."""
         errors: dict[str, str] = {}
+        tracker = is_sleep_tracker(self.config_entry.data.get("model"))
 
         if user_input is not None:
             value = user_input[CONF_SCAN_INTERVAL]
             if not MIN_SCAN_INTERVAL <= value <= MAX_SCAN_INTERVAL:
                 errors[CONF_SCAN_INTERVAL] = "invalid_scan_interval"
+            elif tracker and not (
+                MIN_SLEEP_TARGET_HOURS
+                <= user_input[CONF_SLEEP_TARGET_HOURS]
+                <= MAX_SLEEP_TARGET_HOURS
+            ):
+                errors[CONF_SLEEP_TARGET_HOURS] = "invalid_sleep_target"
             else:
                 return self.async_create_entry(title="", data=user_input)
 
@@ -221,21 +232,33 @@ class SleepMeOptionsFlowHandler(OptionsFlow):
         # below is the single source of truth for the allowed range. Bound
         # enforcement at the schema layer would prevent our `invalid_scan_interval`
         # error key from surfacing in the form.
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_SCAN_INTERVAL, default=current
-                ): selector.NumberSelector(
+        fields: dict[Any, Any] = {
+            vol.Required(CONF_SCAN_INTERVAL, default=current): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=86400,
+                    step=1,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+        }
+        if tracker:
+            current_target = self.config_entry.options.get(
+                CONF_SLEEP_TARGET_HOURS, DEFAULT_SLEEP_TARGET_HOURS
+            )
+            fields[vol.Required(CONF_SLEEP_TARGET_HOURS, default=current_target)] = (
+                selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,
-                        max=86400,
-                        step=1,
-                        unit_of_measurement="seconds",
+                        max=24,
+                        step=0.25,
+                        unit_of_measurement="hours",
                         mode=selector.NumberSelectorMode.BOX,
                     )
-                ),
-            }
-        )
+                )
+            )
+        schema = vol.Schema(fields)
         return self.async_show_form(
             step_id="init",
             data_schema=schema,

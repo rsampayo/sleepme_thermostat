@@ -37,9 +37,14 @@
 - Real-time bed occupancy, connectivity, bed temperature, room temperature, and humidity.
 - Latest completed daily sleep report with score, session count, bed-entry/exit times, sleep latency, and total/in-bed/asleep/awake/light/REM/deep durations.
 - Multiple sessions (for example, naps plus overnight sleep) are aggregated into daily sensors.
-- Hypnogram segment count as a sensor.
+- Derived sleep efficiency, wake after sleep onset, stage percentages, restorative sleep, awakenings, longest uninterrupted sleep, main-session timing, sleep midpoint, and additional-session metrics.
+- Configurable sleep goal with nightly goal percentage, sleep debt, and cumulative 7/30-day debt.
+- Seven- and thirty-day averages plus bedtime/wake-time consistency.
+- Four ready-to-import automation blueprints for occupancy actions, presence-aware Dock control, return-to-bed temperature adjustment, and sleep-report alerts.
 - A response-only `sleepme_thermostat.get_sleep_reports` action returns the lossless raw reports, including session IDs and every hypnogram segment, without storing that large health payload in Home Assistant's recorder.
-- Sleep reports use a separate 30-minute polling cadence to protect the API request budget.
+- Sleep reports page over 30 days at a separate 30-minute polling cadence to protect the API request budget.
+
+See [Sleep Tracker features, formulas, and limitations](docs/sleep-tracker.md) for the exact direct-versus-derived boundary. In particular, the public API does not currently expose biometrics or live sleep stages, so HA cannot reproduce those consumer-app features honestly.
 
 ## Requirements
 
@@ -69,7 +74,7 @@
 2. *Settings → Devices & Services → Add Integration → SleepMe*.
 3. Paste the token; pick the Chilipad or Sleep Tracker from the discovered list.
 
-To tune the polling cadence: *Settings → Devices & Services → SleepMe → Configure → Poll interval*.
+To tune the polling cadence: *Settings → Devices & Services → SleepMe → Configure → Poll interval*. Sleep Tracker entries also expose a 4–12 hour personal sleep target used only by HA's goal/debt calculations.
 
 ## Entities created
 
@@ -103,6 +108,16 @@ To tune the polling cadence: *Settings → Devices & Services → SleepMe → Co
 | sensor | Awake / Light / REM / Deep Sleep Duration | Daily stage totals in seconds |
 | sensor | Sleep Latency | Sum across the day's sessions, in seconds |
 | sensor | Hypnogram Segments | Total raw segment count |
+| sensor | Sleep Efficiency / Wake After Sleep Onset | Derived from public duration fields |
+| sensor | Awake / Light / REM / Deep / Restorative Percentage | Derived daily composition |
+| sensor | Restorative Sleep / Longest Uninterrupted Sleep | Derived durations |
+| sensor | Sleep Goal / Sleep Debt | Based on the configurable HA target |
+| sensor | Awakenings | Sleep-to-awake hypnogram transitions |
+| sensor | Main Sleep Entered/Exited Bed / Sleep Midpoint | Longest session is treated as main sleep |
+| sensor | Additional Sleep Sessions / Duration | All sessions other than the longest |
+| sensor | 7-day and 30-day averages | Score, duration, efficiency, latency, stages, awakenings |
+| sensor | 7-day and 30-day consistency | Mean clock-time deviation for bedtime and wake time |
+| sensor | 7-day and 30-day cumulative debt | Sum of per-night debt in the window |
 | sensor | IP / LAN / Firmware | Diagnostic |
 
 ## Fetch complete raw sleep reports
@@ -121,26 +136,20 @@ response_variable: sleepme_data
 
 The normal sensors intentionally keep hypnogram arrays out of state attributes so Home Assistant's recorder does not duplicate a large health-data payload every refresh. Sleepme's consumer app documents heart rate, HRV, and respiration, but the current public `/sleep-reports` response does not expose those fields; this integration cannot create values that the public API does not return.
 
-## Example automation: cool the bed at bedtime
+## Automation blueprints
 
-```yaml
-automation:
-  - alias: SleepMe — cool bed at bedtime
-    trigger:
-      - platform: time
-        at: "22:30:00"
-    action:
-      - service: climate.set_hvac_mode
-        target:
-          entity_id: climate.dock_pro_ramon
-        data:
-          hvac_mode: auto
-      - service: climate.set_temperature
-        target:
-          entity_id: climate.dock_pro_ramon
-        data:
-          temperature: 18
-```
+Import any blueprint in *Settings → Automations & Scenes → Blueprints → Import Blueprint* using its raw URL:
+
+| Blueprint | What it reproduces with HA data |
+|---|---|
+| [Occupancy actions](blueprints/automation/sleepme_thermostat/tracker_occupancy_actions.yaml) | Run lights, scenes, locks, or notifications when bed occupancy changes |
+| [Presence-aware Dock control](blueprints/automation/sleepme_thermostat/dock_presence_control.yaml) | Early/late bedtime, scheduled start, early wake, and snooze-safe shutdown |
+| [Return-to-bed adjustment](blueprints/automation/sleepme_thermostat/dock_back_to_sleep.yaml) | Temporary configurable Dock adjustment after an overnight absence and return |
+| [Sleep report alert](blueprints/automation/sleepme_thermostat/sleep_report_alert.yaml) | Notify on transparent score, duration, efficiency, latency, and deep-sleep thresholds |
+
+These are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml).
+
+All HA-supported frontend languages can load and use the integration. Entity and option text uses HA's translation system; Spanish is included and every other locale receives HA's built-in English fallback instead of broken or missing labels.
 
 ## Troubleshooting
 

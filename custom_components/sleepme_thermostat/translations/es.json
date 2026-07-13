@@ -49,14 +49,16 @@
     "step": {
       "init": {
         "title": "Opciones del dispositivo SleepMe",
-        "description": "Ajusta con qué frecuencia Home Assistant consulta la API de SleepMe para este dispositivo. Valores más bajos son más reactivos pero consumen más de tu presupuesto de llamadas por minuto.",
+        "description": "Ajusta con qué frecuencia Home Assistant consulta la API de SleepMe. Para Sleep Tracker también puedes configurar el objetivo nocturno usado por los sensores derivados de objetivo y deuda de sueño.",
         "data": {
-          "scan_interval": "Intervalo de sondeo (segundos)"
+          "scan_interval": "Intervalo de sondeo (segundos)",
+          "sleep_target_hours": "Objetivo nocturno de sueño (horas)"
         }
       }
     },
     "error": {
-      "invalid_scan_interval": "El intervalo de sondeo debe estar entre 10 y 300 segundos."
+      "invalid_scan_interval": "El intervalo de sondeo debe estar entre 10 y 300 segundos.",
+      "invalid_sleep_target": "El objetivo nocturno debe estar entre 4 y 12 horas."
     }
   },
   "services": {

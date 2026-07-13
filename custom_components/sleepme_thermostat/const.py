@@ -32,9 +32,21 @@ MAX_TEMP_C = 48.0
 
 # Options flow
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_SLEEP_TARGET_HOURS = "sleep_target_hours"
 # 30s default keeps 3-device installs comfortably under the 9 req/min
 # per-account ceiling (3 * 60/30 = 6 req/min). v4.1.0 release notes asked
 # multi-device users to bump this manually; v4.1.1 makes it the default.
 DEFAULT_SCAN_INTERVAL = 30
 MIN_SCAN_INTERVAL = 10
 MAX_SCAN_INTERVAL = 300
+
+# Used only for HA-derived goal/debt sensors. Sleepme does not prescribe this
+# value and users can change it in the integration options.
+DEFAULT_SLEEP_TARGET_HOURS = 8.0
+MIN_SLEEP_TARGET_HOURS = 4.0
+MAX_SLEEP_TARGET_HOURS = 12.0
+
+# The endpoint returns at most seven dates per call. The report coordinator
+# pages across five non-overlapping windows every 30 minutes so rolling metrics
+# can cover a full month without increasing the live-device polling cadence.
+SLEEP_REPORT_HISTORY_DAYS = 30

@@ -45,18 +45,77 @@
       "reauth_successful": "Re-authentication was successful."
     }
   },
+  "entity": {
+    "sensor": {
+      "date": { "name": "Last Sleep Report" },
+      "sleep_score_percent": { "name": "Sleep Score" },
+      "session_count": { "name": "Sleep Sessions" },
+      "enter_bed_time": { "name": "Entered Bed" },
+      "exit_bed_time": { "name": "Exited Bed" },
+      "total_session_duration": { "name": "Total Session Duration" },
+      "in_bed_duration": { "name": "In-bed Duration" },
+      "total_sleep_duration": { "name": "Total Sleep Duration" },
+      "awake_duration": { "name": "Awake Duration" },
+      "light_sleep_duration": { "name": "Light Sleep Duration" },
+      "rem_sleep_duration": { "name": "REM Sleep Duration" },
+      "deep_sleep_duration": { "name": "Deep Sleep Duration" },
+      "sleep_latency": { "name": "Sleep Latency" },
+      "hypnogram_segment_count": { "name": "Hypnogram Segments" },
+      "sleep_efficiency_percent": { "name": "Sleep Efficiency" },
+      "wake_after_sleep_onset": { "name": "Wake After Sleep Onset" },
+      "restorative_sleep_duration": { "name": "Restorative Sleep Duration" },
+      "sleep_debt": { "name": "Sleep Debt" },
+      "sleep_goal_percent": { "name": "Sleep Goal" },
+      "awakening_count": { "name": "Awakenings" },
+      "longest_uninterrupted_sleep_duration": { "name": "Longest Uninterrupted Sleep" },
+      "main_enter_bed_time": { "name": "Main Sleep Entered Bed" },
+      "main_exit_bed_time": { "name": "Main Sleep Exited Bed" },
+      "sleep_midpoint": { "name": "Sleep Midpoint" },
+      "nap_count": { "name": "Additional Sleep Sessions" },
+      "nap_sleep_duration": { "name": "Additional Sleep Duration" },
+      "awake_percent": { "name": "Awake Percentage" },
+      "light_sleep_percent": { "name": "Light Sleep Percentage" },
+      "rem_sleep_percent": { "name": "REM Sleep Percentage" },
+      "deep_sleep_percent": { "name": "Deep Sleep Percentage" },
+      "restorative_sleep_percent": { "name": "Restorative Sleep Percentage" },
+      "tracked_nights_7d": { "name": "Tracked Nights 7 Day" },
+      "average_sleep_score_percent_7d": { "name": "Average Sleep Score 7 Day" },
+      "average_total_sleep_duration_7d": { "name": "Average Sleep Duration 7 Day" },
+      "average_sleep_efficiency_percent_7d": { "name": "Average Sleep Efficiency 7 Day" },
+      "average_sleep_latency_7d": { "name": "Average Sleep Latency 7 Day" },
+      "average_deep_sleep_percent_7d": { "name": "Average Deep Sleep 7 Day" },
+      "average_rem_sleep_percent_7d": { "name": "Average REM Sleep 7 Day" },
+      "average_awakening_count_7d": { "name": "Average Awakenings 7 Day" },
+      "cumulative_sleep_debt_7d": { "name": "Cumulative Sleep Debt 7 Day" },
+      "bedtime_consistency_7d": { "name": "Bedtime Consistency 7 Day" },
+      "wake_time_consistency_7d": { "name": "Wake Time Consistency 7 Day" },
+      "tracked_nights_30d": { "name": "Tracked Nights 30 Day" },
+      "average_sleep_score_percent_30d": { "name": "Average Sleep Score 30 Day" },
+      "average_total_sleep_duration_30d": { "name": "Average Sleep Duration 30 Day" },
+      "average_sleep_efficiency_percent_30d": { "name": "Average Sleep Efficiency 30 Day" },
+      "average_sleep_latency_30d": { "name": "Average Sleep Latency 30 Day" },
+      "average_deep_sleep_percent_30d": { "name": "Average Deep Sleep 30 Day" },
+      "average_rem_sleep_percent_30d": { "name": "Average REM Sleep 30 Day" },
+      "average_awakening_count_30d": { "name": "Average Awakenings 30 Day" },
+      "cumulative_sleep_debt_30d": { "name": "Cumulative Sleep Debt 30 Day" },
+      "bedtime_consistency_30d": { "name": "Bedtime Consistency 30 Day" },
+      "wake_time_consistency_30d": { "name": "Wake Time Consistency 30 Day" }
+    }
+  },
   "options": {
     "step": {
       "init": {
         "title": "SleepMe device options",
-        "description": "Adjust how often Home Assistant polls the SleepMe API for this device. Lower values feel more responsive but consume more of your per-minute API budget.",
+        "description": "Adjust how often Home Assistant polls the SleepMe API. Sleep Tracker entries can also set the personal nightly goal used by Home Assistant's derived sleep-goal and sleep-debt sensors.",
         "data": {
-          "scan_interval": "Poll interval (seconds)"
+          "scan_interval": "Poll interval (seconds)",
+          "sleep_target_hours": "Nightly sleep target (hours)"
         }
       }
     },
     "error": {
-      "invalid_scan_interval": "Poll interval must be between 10 and 300 seconds."
+      "invalid_scan_interval": "Poll interval must be between 10 and 300 seconds.",
+      "invalid_sleep_target": "Nightly sleep target must be between 4 and 12 hours."
     }
   },
   "services": {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -20,9 +20,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import (
+    CONF_SLEEP_TARGET_HOURS,
+    DEFAULT_SLEEP_TARGET_HOURS,
+    DOMAIN,
+)
 from .helpers import build_device_info, is_sleep_tracker
-from .sleep_reports import latest_sleep_report, summarize_sleep_report
+from .sleep_reports import (
+    latest_sleep_report,
+    summarize_sleep_history,
+    summarize_sleep_report,
+)
 from .update_manager import SleepReportUpdateManager
 
 if TYPE_CHECKING:
@@ -58,9 +66,16 @@ async def async_setup_entry(
             ]
         )
         if data.report_coordinator is not None:
+            sleep_target_seconds = (
+                entry.options.get(CONF_SLEEP_TARGET_HOURS, DEFAULT_SLEEP_TARGET_HOURS)
+                * 3600
+            )
             entities.extend(
                 _build_sleep_report_sensors(
-                    data.report_coordinator, device_id, device_info
+                    data.report_coordinator,
+                    device_id,
+                    device_info,
+                    sleep_target_seconds=sleep_target_seconds,
                 )
             )
     else:
@@ -382,30 +397,49 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
         unit: str | None = None,
         state_class: SensorStateClass | None = None,
         icon: str | None = None,
+        scope: Literal["latest", "history"] = "latest",
+        sleep_target_seconds: float = DEFAULT_SLEEP_TARGET_HOURS * 3600,
+        enabled_default: bool = True,
     ) -> None:
         super().__init__(coordinator)
         self._key = key
-        self._attr_name = label
+        # Keep the English label beside the entity definition for maintainers,
+        # while HA resolves the displayed name through strings.json and the
+        # active frontend language (falling back to English when untranslated).
+        self._english_label = label
+        self._attr_translation_key = key
         self._attr_unique_id = f"{DOMAIN}_{device_id}_sleep_report_{key}"
         self._attr_device_info = device_info
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
         self._attr_state_class = state_class
         self._attr_icon = icon
+        self._scope = scope
+        self._sleep_target_seconds = sleep_target_seconds
+        self._attr_entity_registry_enabled_default = enabled_default
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
         """Return the latest report summary value for this sensor."""
+        if self._scope == "history":
+            return summarize_sleep_history(
+                self.coordinator.data or [],
+                sleep_target_seconds=self._sleep_target_seconds,
+            ).get(self._key)
         report = latest_sleep_report(self.coordinator.data or [])
-        return summarize_sleep_report(report).get(self._key)
+        return summarize_sleep_report(
+            report, sleep_target_seconds=self._sleep_target_seconds
+        ).get(self._key)
 
 
 def _build_sleep_report_sensors(
     coordinator: SleepReportUpdateManager,
     device_id: str,
     device_info: DeviceInfo,
+    *,
+    sleep_target_seconds: float,
 ) -> list[SleepReportSensor]:
-    """Build all aggregate sensors backed by the public report schema."""
+    """Build direct and derived sensors backed by public report data."""
     definitions: list[dict[str, Any]] = [
         {
             "key": "date",
@@ -464,12 +498,207 @@ def _build_sleep_report_sensors(
             "icon": "mdi:chart-timeline-variant",
         }
     )
+    definitions.extend(
+        [
+            {
+                "key": "sleep_efficiency_percent",
+                "label": "Sleep Efficiency",
+                "unit": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:percent-circle-outline",
+            },
+            {
+                "key": "wake_after_sleep_onset",
+                "label": "Wake After Sleep Onset",
+                "device_class": SensorDeviceClass.DURATION,
+                "unit": UnitOfTime.SECONDS,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "key": "restorative_sleep_duration",
+                "label": "Restorative Sleep Duration",
+                "device_class": SensorDeviceClass.DURATION,
+                "unit": UnitOfTime.SECONDS,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:brain",
+            },
+            {
+                "key": "sleep_debt",
+                "label": "Sleep Debt",
+                "device_class": SensorDeviceClass.DURATION,
+                "unit": UnitOfTime.SECONDS,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:bed-clock",
+            },
+            {
+                "key": "sleep_goal_percent",
+                "label": "Sleep Goal",
+                "unit": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:target",
+            },
+            {
+                "key": "awakening_count",
+                "label": "Awakenings",
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:weather-sunset-up",
+            },
+            {
+                "key": "longest_uninterrupted_sleep_duration",
+                "label": "Longest Uninterrupted Sleep",
+                "device_class": SensorDeviceClass.DURATION,
+                "unit": UnitOfTime.SECONDS,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:sleep",
+            },
+            {
+                "key": "main_enter_bed_time",
+                "label": "Main Sleep Entered Bed",
+                "device_class": SensorDeviceClass.TIMESTAMP,
+            },
+            {
+                "key": "main_exit_bed_time",
+                "label": "Main Sleep Exited Bed",
+                "device_class": SensorDeviceClass.TIMESTAMP,
+            },
+            {
+                "key": "sleep_midpoint",
+                "label": "Sleep Midpoint",
+                "device_class": SensorDeviceClass.TIMESTAMP,
+                "icon": "mdi:clock-time-four-outline",
+            },
+            {
+                "key": "nap_count",
+                "label": "Additional Sleep Sessions",
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:bed-clock",
+            },
+            {
+                "key": "nap_sleep_duration",
+                "label": "Additional Sleep Duration",
+                "device_class": SensorDeviceClass.DURATION,
+                "unit": UnitOfTime.SECONDS,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:bed-clock",
+            },
+        ]
+    )
+    for key, label in (
+        ("awake_percent", "Awake"),
+        ("light_sleep_percent", "Light Sleep"),
+        ("rem_sleep_percent", "REM Sleep"),
+        ("deep_sleep_percent", "Deep Sleep"),
+        ("restorative_sleep_percent", "Restorative Sleep"),
+    ):
+        definitions.append(
+            {
+                "key": key,
+                "label": f"{label} Percentage",
+                "unit": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "icon": "mdi:chart-donut",
+            }
+        )
+
+    history_definitions: list[dict[str, Any]] = []
+    for days in (7, 30):
+        suffix = f"_{days}d"
+        history_definitions.extend(
+            [
+                {
+                    "key": f"tracked_nights{suffix}",
+                    "label": f"Tracked Nights {days} Day",
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "icon": "mdi:calendar-check",
+                },
+                {
+                    "key": f"average_sleep_score_percent{suffix}",
+                    "label": f"Average Sleep Score {days} Day",
+                    "unit": PERCENTAGE,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "icon": "mdi:sleep",
+                },
+                {
+                    "key": f"average_total_sleep_duration{suffix}",
+                    "label": f"Average Sleep Duration {days} Day",
+                    "device_class": SensorDeviceClass.DURATION,
+                    "unit": UnitOfTime.SECONDS,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                },
+                {
+                    "key": f"average_sleep_efficiency_percent{suffix}",
+                    "label": f"Average Sleep Efficiency {days} Day",
+                    "unit": PERCENTAGE,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                },
+                {
+                    "key": f"average_sleep_latency{suffix}",
+                    "label": f"Average Sleep Latency {days} Day",
+                    "device_class": SensorDeviceClass.DURATION,
+                    "unit": UnitOfTime.SECONDS,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                },
+                {
+                    "key": f"average_deep_sleep_percent{suffix}",
+                    "label": f"Average Deep Sleep {days} Day",
+                    "unit": PERCENTAGE,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                },
+                {
+                    "key": f"average_rem_sleep_percent{suffix}",
+                    "label": f"Average REM Sleep {days} Day",
+                    "unit": PERCENTAGE,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                },
+                {
+                    "key": f"average_awakening_count{suffix}",
+                    "label": f"Average Awakenings {days} Day",
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "icon": "mdi:weather-sunset-up",
+                },
+                {
+                    "key": f"cumulative_sleep_debt{suffix}",
+                    "label": f"Cumulative Sleep Debt {days} Day",
+                    "device_class": SensorDeviceClass.DURATION,
+                    "unit": UnitOfTime.SECONDS,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "icon": "mdi:bed-clock",
+                },
+                {
+                    "key": f"bedtime_consistency{suffix}",
+                    "label": f"Bedtime Consistency {days} Day",
+                    "device_class": SensorDeviceClass.DURATION,
+                    "unit": UnitOfTime.MINUTES,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "icon": "mdi:clock-check-outline",
+                },
+                {
+                    "key": f"wake_time_consistency{suffix}",
+                    "label": f"Wake Time Consistency {days} Day",
+                    "device_class": SensorDeviceClass.DURATION,
+                    "unit": UnitOfTime.MINUTES,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "icon": "mdi:clock-check-outline",
+                },
+            ]
+        )
     return [
         SleepReportSensor(
             coordinator,
             device_id,
             device_info,
+            sleep_target_seconds=sleep_target_seconds,
             **definition,
         )
         for definition in definitions
+    ] + [
+        SleepReportSensor(
+            coordinator,
+            device_id,
+            device_info,
+            scope="history",
+            sleep_target_seconds=sleep_target_seconds,
+            **definition,
+        )
+        for definition in history_definitions
     ]

@@ -8,6 +8,7 @@ import pytest
 from custom_components.sleepme_thermostat.const import (
     API_URL,
     CONF_SCAN_INTERVAL,
+    CONF_SLEEP_TARGET_HOURS,
     DOMAIN,
 )
 from custom_components.sleepme_thermostat.sleepme_api import (
@@ -308,6 +309,24 @@ def _entry_with_default_options() -> MockConfigEntry:
     )
 
 
+def _tracker_entry_with_default_options() -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_opts",
+        version=5,
+        unique_id="tracker-options-device",
+        title="Sleep Tracker Bedroom",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": "tracker-options-device",
+            "firmware_version": "2.3.4",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-OPTIONS",
+        },
+    )
+
+
 async def test_options_flow_happy_path(
     hass: HomeAssistant, mock_sleepme_client: AsyncMock
 ) -> None:
@@ -360,3 +379,49 @@ async def test_options_flow_rejects_out_of_range(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_SCAN_INTERVAL: "invalid_scan_interval"}
+
+
+async def test_tracker_options_include_sleep_target(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """Tracker options persist the goal used for derived sleep-debt sensors."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    entry = _tracker_entry_with_default_options()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_SCAN_INTERVAL: 30, CONF_SLEEP_TARGET_HOURS: 7.5},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_SLEEP_TARGET_HOURS] == 7.5
+
+
+async def test_tracker_options_reject_invalid_sleep_target(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """The configurable target is bounded to a plausible 4-12 hours."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    entry = _tracker_entry_with_default_options()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_SCAN_INTERVAL: 30, CONF_SLEEP_TARGET_HOURS: 3.75},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_SLEEP_TARGET_HOURS: "invalid_sleep_target"}
+    assert CONF_SLEEP_TARGET_HOURS not in entry.options

@@ -38,6 +38,7 @@ from .const import (
     DOMAIN,
     MAX_SLEEP_REPORT_DAYS_BACK,
     SERVICE_GET_SLEEP_REPORTS,
+    SLEEP_REPORT_HISTORY_DAYS,
 )
 from .helpers import is_sleep_tracker
 from .sleepme import SleepMeClient
@@ -155,7 +156,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
             API_URL,
             api_token,
             time_zone=hass.config.time_zone,
-            days_back=DEFAULT_SLEEP_REPORT_DAYS_BACK,
+            history_days=SLEEP_REPORT_HISTORY_DAYS,
             scan_interval=DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
         )
         await report_coordinator.async_config_entry_first_refresh()
