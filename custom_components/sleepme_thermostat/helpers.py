@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 
-from .const import DOMAIN, MAX_TEMP_C, MIN_TEMP_C, PRESET_TEMPERATURES
+from .const import (
+    DOMAIN,
+    MAX_TEMP_C,
+    MIN_TEMP_C,
+    PRESET_MAX_COOL,
+    PRESET_MAX_HEAT,
+    PRESET_TEMPERATURES,
+)
 
 
 def round_half_up(n: float) -> float:
@@ -13,8 +20,8 @@ def round_half_up(n: float) -> float:
 
 
 _SENTINEL_TO_LIMIT: dict[int | float, float] = {
-    PRESET_TEMPERATURES["Max Cool"]: MIN_TEMP_C,
-    PRESET_TEMPERATURES["Max Heat"]: MAX_TEMP_C,
+    PRESET_TEMPERATURES[PRESET_MAX_COOL]: MIN_TEMP_C,
+    PRESET_TEMPERATURES[PRESET_MAX_HEAT]: MAX_TEMP_C,
 }
 
 
