@@ -44,7 +44,7 @@ from .const import (
     PRESET_MAX_HEAT,
     PRESET_TEMPERATURES,
 )
-from .helpers import build_device_info, round_half_up
+from .helpers import build_device_info, clamp_api_sentinel, round_half_up
 from .sleepme_api import (
     SleepMeAPIError,
     SleepMeAuthError,
@@ -136,10 +136,8 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        """Optimistic target wins until the server confirms or the window expires."""
-        server_value = self.coordinator.data["control"].get("set_temperature_c")
-        optimistic = self._effective_optimistic_temp(server_value)
-        return optimistic if optimistic is not None else server_value
+        """Return the target temperature, clamping API sentinels to physical limits."""
+        return clamp_api_sentinel(self._raw_setpoint())
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -151,11 +149,17 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         """Map the current setpoint back to a preset, if it is a sentinel."""
         if self.hvac_mode == HVACMode.OFF:
             return PRESET_NONE
-        setpoint = self.target_temperature
+        setpoint = self._raw_setpoint()
         for mode, sentinel in PRESET_TEMPERATURES.items():
             if setpoint == sentinel:
                 return mode
         return PRESET_NONE
+
+    def _raw_setpoint(self) -> float | None:
+        """Resolve the current setpoint including sentinel values."""
+        server_value = self.coordinator.data["control"].get("set_temperature_c")
+        optimistic = self._effective_optimistic_temp(server_value)
+        return optimistic if optimistic is not None else server_value
 
     @property
     def available(self) -> bool:
@@ -240,10 +244,8 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             await self.async_set_hvac_mode(HVACMode.AUTO)
 
         if preset_mode in PRESET_TEMPERATURES:
-            if (
-                self.target_temperature is not None
-                and self.target_temperature not in PRESET_TEMPERATURES.values()
-            ):
+            raw = self._raw_setpoint()
+            if raw is not None and raw not in PRESET_TEMPERATURES.values():
                 self._previous_target_temperature = self.target_temperature
             await self.async_set_temperature(
                 temperature=PRESET_TEMPERATURES[preset_mode]

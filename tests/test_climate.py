@@ -199,8 +199,8 @@ async def test_preset_mode_max_cool(
     mock_sleepme_client.set_temp_level.assert_called_once_with(-1)
 
     state = hass.states.get(ENTITY_ID)
-    # Optimistic temp == sentinel; preset_mode derives from that.
-    assert state.attributes["temperature"] == -1
+    # Sentinel is clamped to the physical minimum for HA display.
+    assert state.attributes["temperature"] == MIN_TEMP_C
     assert state.attributes["preset_mode"] == PRESET_MAX_COOL
 
 
@@ -327,6 +327,98 @@ async def test_available_false_when_disconnected(
     await hass.async_block_till_done()
     state = hass.states.get(ENTITY_ID)
     assert state.state == "unavailable"
+
+
+async def test_sentinel_999_clamped_to_max_temp(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """API sentinel 999 (MAX HEAT) should appear as MAX_TEMP_C in HA state."""
+    entry = await _setup(hass)
+    coord = entry.runtime_data.coordinator
+    coord.data["control"]["set_temperature_c"] = 999
+    coord.data["control"]["thermal_control_status"] = "active"
+    coord.async_update_listeners()
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["temperature"] == MAX_TEMP_C
+    assert state.attributes["preset_mode"] == PRESET_MAX_HEAT
+
+
+async def test_sentinel_neg1_clamped_to_min_temp(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """API sentinel -1 (MAX COOL) should appear as MIN_TEMP_C in HA state."""
+    entry = await _setup(hass)
+    coord = entry.runtime_data.coordinator
+    coord.data["control"]["set_temperature_c"] = -1
+    coord.data["control"]["thermal_control_status"] = "active"
+    coord.async_update_listeners()
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["temperature"] == MIN_TEMP_C
+    assert state.attributes["preset_mode"] == PRESET_MAX_COOL
+
+
+async def test_preset_to_preset_preserves_previous_temp(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """Switching directly between presets must not overwrite the real previous temp."""
+    await _setup(hass)
+
+    # Set a real user temperature first.
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_TEMPERATURE: 24.0},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # Engage Max Heat.
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_PRESET_MODE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PRESET_MODE: PRESET_MAX_HEAT},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # Switch directly to Max Cool (preset → preset).
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_PRESET_MODE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PRESET_MODE: PRESET_MAX_COOL},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # Restore to "none" — should get the original 24.0, not the clamped 48.0.
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_PRESET_MODE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PRESET_MODE: "none"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["temperature"] == 24.0
+
+
+async def test_normal_temp_not_clamped(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """Regular temperatures pass through unchanged."""
+    entry = await _setup(hass)
+    coord = entry.runtime_data.coordinator
+    coord.data["control"]["set_temperature_c"] = 25.5
+    coord.async_update_listeners()
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY_ID)
+    assert state.attributes["temperature"] == 25.5
 
 
 async def test_optimistic_window_expires(
