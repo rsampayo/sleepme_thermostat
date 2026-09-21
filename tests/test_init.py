@@ -222,6 +222,53 @@ async def test_only_headline_report_sensors_are_enabled_by_default(
     )
 
 
+async def test_disconnected_tracker_hides_stale_live_readings(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """The API serves last-known values for an offline tracker; HA must not."""
+    tracker_status["status"]["is_connected"] = False
+    tracker_status["status"]["user_detected"] = False
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    device_id = "tracker-offline"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_offline",
+        version=5,
+        unique_id=device_id,
+        title="Sleep Tracker Offline",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": device_id,
+            "firmware_version": "2.3.4-test",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-TEST-SERIAL",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+
+    def state_of(platform: str, suffix: str) -> str:
+        entity_id = registry.async_get_entity_id(
+            platform, DOMAIN, f"{DOMAIN}_{device_id}_{suffix}"
+        )
+        assert entity_id is not None
+        return hass.states.get(entity_id).state
+
+    # The connectivity sensor is the one entity that must keep reporting.
+    assert state_of("binary_sensor", "connected") == "off"
+    assert state_of("binary_sensor", "user_detected") == "unavailable"
+    assert state_of("sensor", "environment_humidity") == "unavailable"
+    assert state_of("sensor", "environment_temperature") == "unavailable"
+    assert state_of("sensor", "bed_temperature") == "unavailable"
+
+
 async def test_tracker_live_entities_survive_report_endpoint_failure(
     hass: HomeAssistant,
     mock_sleepme_client: AsyncMock,

@@ -111,6 +111,18 @@ class UserDetectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._attr_device_info = device_info
 
     @property
+    def available(self) -> bool:
+        """Go unavailable while the tracker is offline.
+
+        The API keeps serving the last known state of a disconnected tracker.
+        A stale empty bed would pass as live and could make a presence
+        automation switch a Dock off.
+        """
+        if not self.coordinator.last_update_success:
+            return False
+        return bool(self.coordinator.data["status"].get("is_connected", False))
+
+    @property
     def is_on(self) -> bool | None:
         """Return true while the tracker detects a user."""
         return self.coordinator.data["status"].get("user_detected")

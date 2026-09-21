@@ -309,6 +309,17 @@ class _SleepMeTrackerSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = device_info
 
     @property
+    def available(self) -> bool:
+        """Go unavailable while the tracker is offline.
+
+        The API keeps serving the last known readings of a disconnected
+        tracker, so without this a stale value would pass as a live one.
+        """
+        if not self.coordinator.last_update_success:
+            return False
+        return bool(self.coordinator.data["status"].get("is_connected", False))
+
+    @property
     def native_value(self) -> int | float | None:
         """Return the live tracker status value."""
         return self.coordinator.data["status"].get(self._status_key)
