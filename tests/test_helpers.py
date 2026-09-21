@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from custom_components.sleepme_thermostat.const import DOMAIN
+from custom_components.sleepme_thermostat.const import DOMAIN, MAX_TEMP_C, MIN_TEMP_C
 from custom_components.sleepme_thermostat.helpers import (
     build_device_info,
+    clamp_api_sentinel,
     round_half_up,
 )
 
@@ -16,6 +17,26 @@ def test_round_half_up_rounds_to_half_degree():
     assert round_half_up(20.7) == 20.5
     assert round_half_up(20.8) == 21.0
     assert round_half_up(-1.0) == -1.0
+
+
+def test_clamp_api_sentinel_maps_max_heat():
+    assert clamp_api_sentinel(999) == MAX_TEMP_C
+    assert clamp_api_sentinel(999.0) == MAX_TEMP_C
+
+
+def test_clamp_api_sentinel_maps_max_cool():
+    assert clamp_api_sentinel(-1) == MIN_TEMP_C
+    assert clamp_api_sentinel(-1.0) == MIN_TEMP_C
+
+
+def test_clamp_api_sentinel_passes_normal_values():
+    assert clamp_api_sentinel(22.0) == 22.0
+    assert clamp_api_sentinel(13.0) == 13.0
+    assert clamp_api_sentinel(48.0) == 48.0
+
+
+def test_clamp_api_sentinel_none():
+    assert clamp_api_sentinel(None) is None
 
 
 def test_build_device_info_shape():
