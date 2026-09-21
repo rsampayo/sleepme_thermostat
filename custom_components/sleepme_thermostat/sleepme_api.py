@@ -284,14 +284,25 @@ class SleepMeAPI:
                 )
             return min(v, float(BACKOFF_CEILING))
 
+        fallback = float(min(base * (2 ** (attempt - 1)), BACKOFF_CEILING))
         ra = response.headers.get("Retry-After")
-        if ra:
+        if not ra:
+            return fallback
+
+        try:
+            seconds = int(ra)
+        except ValueError:
             try:
-                return _cap(float(int(ra)))
-            except ValueError:
-                try:
-                    target = parsedate_to_datetime(ra).timestamp()
-                    return _cap(max(0.0, target - time.time()))
-                except (TypeError, ValueError):
-                    _LOGGER.debug("Unparsable Retry-After: %r", ra)
-        return float(min(base * (2 ** (attempt - 1)), BACKOFF_CEILING))
+                target = parsedate_to_datetime(ra).timestamp()
+            except (TypeError, ValueError):
+                _LOGGER.debug("Unparsable Retry-After: %r", ra)
+                return fallback
+            return _cap(max(0.0, target - time.time()))
+
+        if seconds < 0:
+            # Retry-After is a non-negative integer by definition. A negative
+            # one would mean retrying at once against a server that is asking
+            # us to slow down, so it is treated like a missing header.
+            _LOGGER.debug("Ignoring negative Retry-After: %r", ra)
+            return fallback
+        return _cap(float(seconds))

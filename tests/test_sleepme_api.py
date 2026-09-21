@@ -226,7 +226,7 @@ async def test_get_or_create_returns_shared_instance(hass: HomeAssistant) -> Non
 
 # ---- Hypothesis property tests ---------------------------------------------
 
-from hypothesis import given  # noqa: E402
+from hypothesis import example, given  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 
@@ -236,6 +236,7 @@ from hypothesis import strategies as st  # noqa: E402
         max_size=64,
     )
 )
+@example(retry_after="-1")
 def test_compute_backoff_handles_arbitrary_retry_after(retry_after: str) -> None:
     """No printable-ASCII Retry-After string crashes _compute_backoff."""
     resp = httpx.Response(
@@ -255,3 +256,15 @@ def test_compute_backoff_no_retry_after_is_monotonic(attempt: int) -> None:
     prev = SleepMeAPI._compute_backoff(30, max(1, attempt - 1), resp)
     curr = SleepMeAPI._compute_backoff(30, attempt, resp)
     assert curr >= prev
+
+
+def test_negative_retry_after_falls_back_to_computed_backoff() -> None:
+    """A negative header must never become an immediate retry."""
+    resp = httpx.Response(
+        429,
+        headers={"Retry-After": "-1"},
+        request=httpx.Request("GET", "https://x"),
+    )
+
+    assert SleepMeAPI._compute_backoff(30, 1, resp) == 30.0
+    assert SleepMeAPI._compute_backoff(30, 2, resp) == 60.0
