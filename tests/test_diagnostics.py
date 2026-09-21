@@ -8,6 +8,7 @@ from custom_components.sleepme_thermostat.const import DOMAIN
 from custom_components.sleepme_thermostat.diagnostics import (
     async_get_config_entry_diagnostics,
 )
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -97,8 +98,11 @@ async def test_tracker_diagnostics_never_include_health_payload(
     hass: HomeAssistant,
     mock_sleepme_client: AsyncMock,
     tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
 ) -> None:
     """Support bundles expose report health/counts but no sessions or hypnograms."""
+    # The fixture reports are dated mid-July; older dates would be evicted.
+    freezer.move_to("2026-07-13 12:00:00+00:00")
     mock_sleepme_client.get_device_status.return_value = tracker_status
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -122,10 +126,13 @@ async def test_tracker_diagnostics_never_include_health_payload(
     diag = await async_get_config_entry_diagnostics(hass, entry)
 
     assert diag["report_coordinator"] == {
-        "update_interval_seconds": 1800,
+        # One of the four older history windows is fetched per tick, on the
+        # short backfill interval, so three are still owed after setup.
+        "update_interval_seconds": 120,
         "last_update_success": True,
         "last_exception": None,
         "report_count": 3,
+        "pending_backfill_windows": 3,
     }
     assert "sessions" not in str(diag["report_coordinator"])
     assert "hypnogram" not in str(diag["report_coordinator"])

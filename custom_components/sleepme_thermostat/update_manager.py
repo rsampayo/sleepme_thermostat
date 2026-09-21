@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import MAX_SLEEP_REPORT_DAYS_BACK
+from .const import MAX_SLEEP_REPORT_DAYS_BACK, SLEEP_REPORT_BACKFILL_INTERVAL
 from .sleepme import SleepMeClient
 from .sleepme_api import (
     SleepMeAuthError,
@@ -83,7 +83,14 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
 
 
 class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
-    """Fetch account sleep-report history in API-sized date windows."""
+    """Keep a rolling month of account sleep reports.
+
+    Every tick refreshes the newest seven-day window, because only recent
+    reports can still change. Older windows are immutable, so each one is
+    fetched once and cached. They are backfilled one per tick on a short
+    interval, which keeps this coordinator at two requests per tick while it
+    catches up and one request per tick afterwards.
+    """
 
     def __init__(
         self,
@@ -96,42 +103,105 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
     ) -> None:
         self.client = SleepMeClient(hass, api_url, token)
         self.history_days = history_days
+        self._steady_interval = timedelta(seconds=scan_interval)
+        self._backfill_interval = timedelta(seconds=SLEEP_REPORT_BACKFILL_INTERVAL)
+        self._reports_by_date: dict[date, dict[str, Any]] = {}
+        # None until the first tick decides which older windows are owed.
+        self._pending_backfill: list[tuple[date, int]] | None = None
         super().__init__(
             hass,
             _LOGGER,
             name="SleepMe Sleep Reports",
-            update_interval=timedelta(seconds=scan_interval),
+            update_interval=self._backfill_interval,
+            # Reports change about once a day. Skip the state writes when a
+            # refresh returns the same data.
+            always_update=False,
         )
 
+    @property
+    def pending_backfill_windows(self) -> int:
+        """Return how many older history windows are still to be fetched."""
+        return len(self._pending_backfill or [])
+
     async def _async_update_data(self) -> list[dict[str, Any]]:
-        """Fetch and merge non-overlapping report windows through today."""
+        """Refresh the newest window and backfill at most one older window."""
         # dt_util.now() uses HA's configured zone, which HA loads off the event
         # loop at startup. Building a ZoneInfo here would read tzdata from disk
         # inside the loop, and would also miss a later time-zone change.
         time_zone = self.hass.config.time_zone
-        end_date = dt_util.now().date()
-        reports_by_date: dict[str, dict[str, Any]] = {}
-        undated_reports: list[dict[str, Any]] = []
+        today = dt_util.now().date()
+        newest_window, *older_windows = _report_windows(today, self.history_days)
+        if self._pending_backfill is None:
+            self._pending_backfill = older_windows
 
-        for window_end, days_back in _report_windows(end_date, self.history_days):
-            reports = await _async_fetch(
-                self.client.get_sleep_reports(
-                    start_date=window_end,
-                    days_back=days_back,
-                    time_zone=time_zone,
-                )
+        # The newest window decides whether this refresh succeeded.
+        newest_reports = await self._async_fetch_window(newest_window, time_zone)
+        self._merge(newest_reports, overwrite=True)
+
+        if self._pending_backfill:
+            await self._async_backfill_one_window(time_zone)
+
+        self.update_interval = (
+            self._backfill_interval if self._pending_backfill else self._steady_interval
+        )
+        self._evict_older_than(today - timedelta(days=self.history_days - 1))
+        return [self._reports_by_date[key] for key in sorted(self._reports_by_date)]
+
+    async def _async_backfill_one_window(self, time_zone: str) -> None:
+        """Fetch the next owed history window; a failure only postpones it.
+
+        Authentication failures are not caught here, so they still reach the
+        reauth flow.
+        """
+        assert self._pending_backfill
+        window = self._pending_backfill[0]
+        try:
+            reports = await self._async_fetch_window(window, time_zone)
+        except UpdateFailed as err:
+            _LOGGER.debug(
+                "Sleep report history window ending %s not fetched; will retry: %s",
+                window[0],
+                err,
             )
-            for report in reports:
-                report_date = report.get("date")
-                if isinstance(report_date, str):
-                    reports_by_date[report_date] = report
-                else:
-                    undated_reports.append(report)
+            return
+        # A fresher copy from the newest window wins over a backfilled one.
+        self._merge(reports, overwrite=False)
+        self._pending_backfill.pop(0)
 
-        return [
-            *(reports_by_date[key] for key in sorted(reports_by_date)),
-            *undated_reports,
-        ]
+    async def _async_fetch_window(
+        self, window: tuple[date, int], time_zone: str
+    ) -> list[dict[str, Any]]:
+        window_end, days_back = window
+        return await _async_fetch(
+            self.client.get_sleep_reports(
+                start_date=window_end,
+                days_back=days_back,
+                time_zone=time_zone,
+            )
+        )
+
+    def _merge(self, reports: list[dict[str, Any]], *, overwrite: bool) -> None:
+        """Cache reports by calendar date, ignoring ones without a valid date."""
+        for report in reports:
+            report_date = _parse_report_date(report.get("date"))
+            if report_date is None:
+                continue
+            if overwrite or report_date not in self._reports_by_date:
+                self._reports_by_date[report_date] = report
+
+    def _evict_older_than(self, cutoff: date) -> None:
+        """Drop cached dates that fell out of the history range."""
+        for report_date in [key for key in self._reports_by_date if key < cutoff]:
+            del self._reports_by_date[report_date]
+
+
+def _parse_report_date(value: Any) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _report_windows(end_date: date, history_days: int) -> list[tuple[date, int]]:

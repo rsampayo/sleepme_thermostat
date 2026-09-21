@@ -46,7 +46,10 @@ DEFAULT_SLEEP_TARGET_HOURS = 8.0
 MIN_SLEEP_TARGET_HOURS = 4.0
 MAX_SLEEP_TARGET_HOURS = 12.0
 
-# The endpoint returns at most seven dates per call. The report coordinator
-# pages across five non-overlapping windows every 30 minutes so rolling metrics
-# can cover a full month without increasing the live-device polling cadence.
+# The endpoint returns at most seven dates per call, so a month of history is
+# five windows. Only the newest window can still change, so it is the only one
+# refreshed every 30 minutes. The four older windows are fetched once each, one
+# per tick on this shorter interval, so the report coordinator never spends
+# more than two requests of the shared per-account budget at a time.
 SLEEP_REPORT_HISTORY_DAYS = 30
+SLEEP_REPORT_BACKFILL_INTERVAL = 2 * 60

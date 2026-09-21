@@ -42,7 +42,7 @@
 - Seven- and thirty-day averages plus bedtime/wake-time consistency.
 - Five ready-to-import automation blueprints for occupancy actions, presence-aware Dock control with an occupied wake-time extension, return-to-bed temperature adjustment, Warm Awake, and sleep-report alerts.
 - A response-only `sleepme_thermostat.get_sleep_reports` action returns the lossless raw reports, including session IDs and every hypnogram segment, without storing that large health payload in Home Assistant's recorder.
-- Sleep reports page over 30 days at a separate 30-minute polling cadence to protect the API request budget.
+- Sleep reports cover 30 days. Only the newest week is refreshed, once every 30 minutes with a single request, to protect the API request budget. Older weeks are fetched once after startup and cached.
 
 See [Sleep Tracker features, formulas, and limitations](docs/sleep-tracker.md) for the exact direct-versus-derived boundary. In particular, the public API does not currently expose biometrics or live sleep stages, so HA cannot reproduce those consumer-app features honestly.
 

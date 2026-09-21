@@ -5,7 +5,7 @@ The ST501NA exposes two useful data paths through Sleepme's public API:
 1. Live device status: occupancy, connectivity, bed temperature, room temperature, and room humidity.
 2. Finalized daily reports: score, sessions, timestamps, duration totals, stage totals, and hypnogram segments.
 
-Home Assistant polls live status at the configured device interval. It fetches reports every 30 minutes in five non-overlapping API-sized windows, yielding 30 calendar days of history. Reports generally appear only after Sleepme finalizes a session, so report sensors are not real-time sleep-stage sensors.
+Home Assistant polls live status at the configured device interval. It refreshes the newest seven-day report window every 30 minutes, one request per refresh. The four older windows that complete 30 calendar days of history never change, so each is fetched once after startup, one every two minutes, and then cached. The report coordinator therefore never spends more than two requests of the shared per-account budget at a time. Reports generally appear only after Sleepme finalizes a session, so report sensors are not real-time sleep-stage sensors.
 
 The public report payload uses minutes for durations and hypnogram offsets. The integration converts these values to seconds at the aggregation boundary, matching Home Assistant's duration entity convention. The lossless response action returns the raw API values unchanged.
 

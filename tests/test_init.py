@@ -12,6 +12,7 @@ from custom_components.sleepme_thermostat.sleepme_api import (
     SleepMeAuthError,
     SleepMeConnectionError,
 )
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -67,12 +68,15 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
     mock_sleepme_client: AsyncMock,
     tracker_status: dict,
     entity_registry_enabled_by_default: None,
+    freezer: FrozenDateTimeFactory,
 ) -> None:
     """ST501NA gets tracker entities, report entities, and no climate entity.
 
     Every entity is force-enabled here so the long-tail report sensors, which
     ship disabled, still have their values checked.
     """
+    # The fixture reports are dated mid-July; older dates would be evicted.
+    freezer.move_to("2026-07-13 12:00:00+00:00")
     # German is intentionally not bundled: HA must resolve the English source
     # fallback, proving unsupported integration locales remain fully usable.
     hass.config.language = "de"

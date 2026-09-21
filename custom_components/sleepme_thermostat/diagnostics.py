@@ -66,6 +66,9 @@ async def async_get_config_entry_diagnostics(
                     else None
                 ),
                 "report_count": len(reports),
+                "pending_backfill_windows": (
+                    report_coordinator.pending_backfill_windows
+                ),
             }
 
     return {
