@@ -12,6 +12,9 @@ from custom_components.sleepme_thermostat.const import (
     DOMAIN,
     SLEEP_REPORT_BACKFILL_INTERVAL,
 )
+from custom_components.sleepme_thermostat.sleep_reports import (
+    summarize_sleep_history,
+)
 from custom_components.sleepme_thermostat.sleepme_api import (
     SleepMeAuthError,
     SleepMeConnectionError,
@@ -208,6 +211,7 @@ def _report_coordinator(hass: HomeAssistant) -> SleepReportUpdateManager:
         MOCK_API_TOKEN,
         history_days=HISTORY_DAYS,
         scan_interval=REPORT_SCAN_INTERVAL,
+        sleep_target_seconds=8 * 3600,
     )
 
 
@@ -376,3 +380,25 @@ async def test_reports_without_a_valid_date_are_ignored(
     await coordinator.async_refresh()
 
     assert [report["date"] for report in coordinator.data] == ["2026-07-13"]
+
+
+async def test_summaries_are_derived_once_per_refresh_not_per_sensor(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """53 sensors read two dicts; none of them re-aggregates the history."""
+    freezer.move_to("2026-07-13 12:00:00+00:00")
+    mock_sleepme_client.get_sleep_reports.side_effect = _one_report_per_requested_date
+    coordinator = _report_coordinator(hass)
+
+    with patch(
+        "custom_components.sleepme_thermostat.update_manager.summarize_sleep_history",
+        wraps=summarize_sleep_history,
+    ) as history_spy:
+        await coordinator.async_refresh()
+
+    assert history_spy.call_count == 1
+    assert coordinator.latest_summary["date"] == date(2026, 7, 13)
+    assert coordinator.latest_summary["total_sleep_duration"] == 420 * 60
+    assert coordinator.history_summary["tracked_nights_7d"] == 7

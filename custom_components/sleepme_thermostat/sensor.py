@@ -21,16 +21,9 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    CONF_SLEEP_TARGET_HOURS,
-    DEFAULT_SLEEP_TARGET_HOURS,
     DOMAIN,
 )
 from .helpers import build_device_info, is_sleep_tracker
-from .sleep_reports import (
-    latest_sleep_report,
-    summarize_sleep_history,
-    summarize_sleep_report,
-)
 from .update_manager import SleepReportUpdateManager
 
 if TYPE_CHECKING:
@@ -66,16 +59,9 @@ async def async_setup_entry(
             ]
         )
         if data.report_coordinator is not None:
-            sleep_target_seconds = (
-                entry.options.get(CONF_SLEEP_TARGET_HOURS, DEFAULT_SLEEP_TARGET_HOURS)
-                * 3600
-            )
             entities.extend(
                 _build_sleep_report_sensors(
-                    data.report_coordinator,
-                    device_id,
-                    device_info,
-                    sleep_target_seconds=sleep_target_seconds,
+                    data.report_coordinator, device_id, device_info
                 )
             )
     else:
@@ -406,7 +392,7 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
         state_class: SensorStateClass | None = None,
         icon: str | None = None,
         scope: Literal["latest", "history"] = "latest",
-        sleep_target_seconds: float = DEFAULT_SLEEP_TARGET_HOURS * 3600,
+        suggested_unit: str | None = None,
         enabled_default: bool = True,
     ) -> None:
         super().__init__(coordinator)
@@ -421,21 +407,21 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
         self._attr_state_class = state_class
         self._attr_icon = icon
         self._scope = scope
-        self._sleep_target_seconds = sleep_target_seconds
+        # Seconds stay the native and statistics unit; this is only the unit a
+        # new entity is first shown in, and the user can change it.
+        self._attr_suggested_unit_of_measurement = suggested_unit
+        if suggested_unit is not None:
+            self._attr_suggested_display_precision = (
+                1 if suggested_unit == UnitOfTime.HOURS else 0
+            )
         self._attr_entity_registry_enabled_default = enabled_default
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
-        """Return the latest report summary value for this sensor."""
+        """Look the value up in the summaries the coordinator already derived."""
         if self._scope == "history":
-            return summarize_sleep_history(
-                self.coordinator.data or [],
-                sleep_target_seconds=self._sleep_target_seconds,
-            ).get(self._key)
-        report = latest_sleep_report(self.coordinator.data or [])
-        return summarize_sleep_report(
-            report, sleep_target_seconds=self._sleep_target_seconds
-        ).get(self._key)
+            return self.coordinator.history_summary.get(self._key)
+        return self.coordinator.latest_summary.get(self._key)
 
 
 # Report sensors enabled out of the box: the headline numbers, and every sensor
@@ -443,6 +429,9 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
 # registered, so users can enable them, but stay off by default. 47 of the 53
 # carry a state class, and values that change once a day are not worth five
 # minute statistics rows forever. Registry defaults are hard to change later.
+# Second-valued durations that read better in minutes than in hours.
+SHORT_DURATION_KEYS = frozenset({"awake_duration", "sleep_latency"})
+
 REPORT_SENSORS_ENABLED_BY_DEFAULT = frozenset(
     {
         "date",
@@ -465,8 +454,6 @@ def _build_sleep_report_sensors(
     coordinator: SleepReportUpdateManager,
     device_id: str,
     device_info: DeviceInfo,
-    *,
-    sleep_target_seconds: float,
 ) -> list[SleepReportSensor]:
     """Build direct and derived sensors backed by public report data."""
     definitions: list[dict[str, Any]] = [
@@ -515,6 +502,9 @@ def _build_sleep_report_sensors(
             "label": label,
             "device_class": SensorDeviceClass.DURATION,
             "unit": UnitOfTime.SECONDS,
+            "suggested_unit": (
+                UnitOfTime.MINUTES if key in SHORT_DURATION_KEYS else UnitOfTime.HOURS
+            ),
             "state_class": SensorStateClass.MEASUREMENT,
         }
         for key, label in duration_labels.items()
@@ -541,6 +531,7 @@ def _build_sleep_report_sensors(
                 "label": "Wake After Sleep Onset",
                 "device_class": SensorDeviceClass.DURATION,
                 "unit": UnitOfTime.SECONDS,
+                "suggested_unit": UnitOfTime.MINUTES,
                 "state_class": SensorStateClass.MEASUREMENT,
             },
             {
@@ -548,6 +539,7 @@ def _build_sleep_report_sensors(
                 "label": "Restorative Sleep Duration",
                 "device_class": SensorDeviceClass.DURATION,
                 "unit": UnitOfTime.SECONDS,
+                "suggested_unit": UnitOfTime.HOURS,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "icon": "mdi:brain",
             },
@@ -556,6 +548,7 @@ def _build_sleep_report_sensors(
                 "label": "Sleep Debt",
                 "device_class": SensorDeviceClass.DURATION,
                 "unit": UnitOfTime.SECONDS,
+                "suggested_unit": UnitOfTime.HOURS,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "icon": "mdi:bed-clock",
             },
@@ -577,6 +570,7 @@ def _build_sleep_report_sensors(
                 "label": "Longest Uninterrupted Sleep",
                 "device_class": SensorDeviceClass.DURATION,
                 "unit": UnitOfTime.SECONDS,
+                "suggested_unit": UnitOfTime.HOURS,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "icon": "mdi:sleep",
             },
@@ -607,6 +601,7 @@ def _build_sleep_report_sensors(
                 "label": "Additional Sleep Duration",
                 "device_class": SensorDeviceClass.DURATION,
                 "unit": UnitOfTime.SECONDS,
+                "suggested_unit": UnitOfTime.HOURS,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "icon": "mdi:bed-clock",
             },
@@ -652,6 +647,7 @@ def _build_sleep_report_sensors(
                     "label": f"Average Sleep Duration {days} Day",
                     "device_class": SensorDeviceClass.DURATION,
                     "unit": UnitOfTime.SECONDS,
+                    "suggested_unit": UnitOfTime.HOURS,
                     "state_class": SensorStateClass.MEASUREMENT,
                 },
                 {
@@ -665,6 +661,7 @@ def _build_sleep_report_sensors(
                     "label": f"Average Sleep Latency {days} Day",
                     "device_class": SensorDeviceClass.DURATION,
                     "unit": UnitOfTime.SECONDS,
+                    "suggested_unit": UnitOfTime.MINUTES,
                     "state_class": SensorStateClass.MEASUREMENT,
                 },
                 {
@@ -687,9 +684,10 @@ def _build_sleep_report_sensors(
                 },
                 {
                     "key": f"cumulative_sleep_debt{suffix}",
-                    "label": f"Cumulative Sleep Debt {days} Day",
+                    "label": f"Sleep Debt Over Tracked Nights {days} Day",
                     "device_class": SensorDeviceClass.DURATION,
                     "unit": UnitOfTime.SECONDS,
+                    "suggested_unit": UnitOfTime.HOURS,
                     "state_class": SensorStateClass.MEASUREMENT,
                     "icon": "mdi:bed-clock",
                 },
@@ -716,7 +714,6 @@ def _build_sleep_report_sensors(
             coordinator,
             device_id,
             device_info,
-            sleep_target_seconds=sleep_target_seconds,
             enabled_default=definition["key"] in REPORT_SENSORS_ENABLED_BY_DEFAULT,
             **definition,
         )
@@ -727,7 +724,6 @@ def _build_sleep_report_sensors(
             device_id,
             device_info,
             scope="history",
-            sleep_target_seconds=sleep_target_seconds,
             enabled_default=False,
             **definition,
         )

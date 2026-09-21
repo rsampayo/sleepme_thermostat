@@ -156,8 +156,15 @@ def summarize_sleep_history(
     reports: list[dict[str, Any]],
     *,
     sleep_target_seconds: float = DEFAULT_SLEEP_TARGET_HOURS * 3600,
+    today: date | None = None,
 ) -> dict[str, Any]:
-    """Return seven- and thirty-day trends ending at the newest report date."""
+    """Return seven- and thirty-day trends for the windows ending on ``today``.
+
+    Anchoring on the calendar matters: if the tracker goes unused for ten days,
+    a window ending at the newest report would silently describe a week that
+    ended ten days ago. ``today`` falls back to the newest report date only for
+    callers without a clock.
+    """
     dated_reports = _dated_completed_reports(reports)
     all_dates = [
         parsed
@@ -167,7 +174,7 @@ def summarize_sleep_history(
     if not all_dates:
         return {}
 
-    end_date = max(all_dates)
+    end_date = today if today is not None else max(all_dates)
     result: dict[str, Any] = {}
     for window_days in (7, 30):
         cutoff = end_date - timedelta(days=window_days - 1)

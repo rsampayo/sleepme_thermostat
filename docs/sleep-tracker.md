@@ -27,8 +27,8 @@ The public report payload uses minutes for durations and hypnogram offsets. The 
 | Main sleep and midpoint | Longest session; midpoint between its entry and exit | HA-derived heuristic |
 | Additional sessions | Every session other than the longest, with total sleep summed | HA-derived heuristic; the API does not label naps |
 | 7/30-day averages | Mean across completed reports in each calendar window | HA-derived |
-| Bed/wake consistency | Mean circular clock-time deviation, in minutes | HA-derived; lower is more consistent |
-| 7/30-day cumulative debt | Sum of nightly debt across tracked nights | HA-derived |
+| Bedtime / wake time variation | Mean circular clock-time deviation, in minutes | HA-derived; lower is more consistent |
+| 7/30-day sleep debt over tracked nights | Sum of nightly debt across tracked nights only; untracked nights add nothing | HA-derived |
 
 The personal sleep target is configured under *Settings → Devices & Services → SleepMe → Configure*. It defaults to eight hours and affects only HA-derived goal/debt sensors; it is not presented as medical guidance or a Sleepme recommendation.
 

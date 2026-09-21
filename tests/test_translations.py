@@ -37,9 +37,7 @@ def test_every_language_has_every_key(language: str) -> None:
 
 def test_report_sensor_labels_match_the_english_strings() -> None:
     """The label beside each definition is documentation; keep it truthful."""
-    sensors = _build_sleep_report_sensors(
-        MagicMock(), "device", MagicMock(), sleep_target_seconds=8 * 3600
-    )
+    sensors = _build_sleep_report_sensors(MagicMock(), "device", MagicMock())
     names = STRINGS["entity"]["sensor"]
 
     assert len(sensors) == 53
@@ -65,9 +63,7 @@ def _collect_report_labels() -> dict[str, str]:
 
     sensor_module.SleepReportSensor.__init__ = recording_init  # type: ignore[method-assign]
     try:
-        _build_sleep_report_sensors(
-            MagicMock(), "device", MagicMock(), sleep_target_seconds=8 * 3600
-        )
+        _build_sleep_report_sensors(MagicMock(), "device", MagicMock())
     finally:
         sensor_module.SleepReportSensor.__init__ = original_init  # type: ignore[method-assign]
     return captured

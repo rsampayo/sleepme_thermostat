@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import pytest
 from custom_components.sleepme_thermostat.const import API_URL, DOMAIN
 from custom_components.sleepme_thermostat.sensor import (
     REPORT_SENSORS_ENABLED_BY_DEFAULT,
@@ -128,20 +129,26 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
     assert state_for("sensor", "sleep_report_date").state == "2026-07-12"
     assert state_for("sensor", "sleep_report_sleep_score_percent").state == "88"
     assert state_for("sensor", "sleep_report_session_count").state == "2"
-    assert state_for("sensor", "sleep_report_total_sleep_duration").state == "31200"
+    # Durations are stored in seconds and first shown in hours or minutes.
+    total_sleep = state_for("sensor", "sleep_report_total_sleep_duration")
+    assert float(total_sleep.state) == pytest.approx(31200 / 3600)
+    assert total_sleep.attributes["unit_of_measurement"] == "h"
     assert state_for("sensor", "sleep_report_hypnogram_segment_count").state == "7"
     assert state_for("sensor", "sleep_report_sleep_efficiency_percent").state == (
         "89.0"
     )
-    assert state_for("sensor", "sleep_report_wake_after_sleep_onset").state == "2460"
+    wake_after_onset = state_for("sensor", "sleep_report_wake_after_sleep_onset")
+    assert float(wake_after_onset.state) == pytest.approx(2460 / 60)
+    assert wake_after_onset.attributes["unit_of_measurement"] == "min"
     assert state_for("sensor", "sleep_report_deep_sleep_percent").state == "25.0"
     assert state_for("sensor", "sleep_report_awakening_count").state == "0"
-    assert (
+    assert float(
         state_for("sensor", "sleep_report_longest_uninterrupted_sleep_duration").state
-        == "27900"
-    )
+    ) == pytest.approx(27900 / 3600)
     assert state_for("sensor", "sleep_report_nap_count").state == "1"
-    assert state_for("sensor", "sleep_report_sleep_debt").state == "4800.0"
+    assert float(state_for("sensor", "sleep_report_sleep_debt").state) == (
+        pytest.approx(4800 / 3600)
+    )
     assert state_for("sensor", "sleep_report_sleep_goal_percent").state == "86.7"
     assert state_for("sensor", "sleep_report_tracked_nights_7d").state == "2"
     assert (

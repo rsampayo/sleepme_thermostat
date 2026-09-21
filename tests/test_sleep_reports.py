@@ -316,3 +316,18 @@ def test_clock_consistency_wraps_across_midnight() -> None:
 def test_missing_report_returns_empty_summary() -> None:
     assert latest_sleep_report([]) is None
     assert summarize_sleep_report(None) == {}
+
+
+def test_history_windows_end_today_not_at_the_newest_report() -> None:
+    """An unused tracker must not pass off an old week as the current one."""
+    reports = [
+        {"date": "2026-07-01", "sessions": [{"total_sleep_duration": 420}]},
+        {"date": "2026-07-02", "sessions": [{"total_sleep_duration": 480}]},
+    ]
+
+    ten_days_later = summarize_sleep_history(reports, today=date(2026, 7, 12))
+
+    assert ten_days_later["tracked_nights_7d"] == 0
+    assert ten_days_later["average_total_sleep_duration_7d"] is None
+    assert ten_days_later["tracked_nights_30d"] == 2
+    assert ten_days_later["average_total_sleep_duration_30d"] == 450 * 60

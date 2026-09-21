@@ -39,7 +39,7 @@
 - Multiple sessions (for example, naps plus overnight sleep) are aggregated into daily sensors.
 - Derived sleep efficiency, wake after sleep onset, stage percentages, restorative sleep, awakenings, longest uninterrupted sleep, main-session timing, sleep midpoint, and additional-session metrics.
 - Configurable sleep goal with nightly goal percentage, sleep debt, and cumulative 7/30-day debt.
-- Seven- and thirty-day averages plus bedtime/wake-time consistency.
+- Seven- and thirty-day averages plus bedtime/wake-time variation. The windows end today, so an unused tracker reads as no data rather than as an old week.
 - Five ready-to-import automation blueprints for occupancy actions, presence-aware Dock control with an occupied wake-time extension, return-to-bed temperature adjustment, Warm Awake, and sleep-report alerts.
 - A response-only `sleepme_thermostat.get_sleep_reports` action returns the lossless raw reports, including session IDs and every hypnogram segment, without storing that large health payload in Home Assistant's recorder.
 - Sleep reports cover 30 days. Only the newest week is refreshed, once every 30 minutes with a single request, to protect the API request budget. Older weeks are fetched once after startup and cached.
@@ -116,8 +116,8 @@ To tune the polling cadence: *Settings → Devices & Services → SleepMe → Co
 | sensor | Main Sleep Entered/Exited Bed / Sleep Midpoint | Longest session is treated as main sleep |
 | sensor | Additional Sleep Sessions / Duration | All sessions other than the longest |
 | sensor | 7-day and 30-day averages | Score, duration, efficiency, latency, stages, awakenings |
-| sensor | 7-day and 30-day consistency | Mean clock-time deviation for bedtime and wake time |
-| sensor | 7-day and 30-day cumulative debt | Sum of per-night debt in the window |
+| sensor | 7-day and 30-day variation | Mean clock-time deviation for bedtime and wake time; lower is more consistent |
+| sensor | 7-day and 30-day sleep debt over tracked nights | Sum of per-night debt across tracked nights in the window |
 | sensor | IP / LAN / Firmware | Diagnostic |
 
 ## Fetch complete raw sleep reports

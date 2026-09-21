@@ -23,6 +23,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import MAX_SLEEP_REPORT_DAYS_BACK, SLEEP_REPORT_BACKFILL_INTERVAL
+from .sleep_reports import (
+    latest_sleep_report,
+    summarize_sleep_history,
+    summarize_sleep_report,
+)
 from .sleepme import SleepMeClient
 from .sleepme_api import (
     SleepMeAuthError,
@@ -100,9 +105,15 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
         *,
         history_days: int,
         scan_interval: int,
+        sleep_target_seconds: float,
     ) -> None:
         self.client = SleepMeClient(hass, api_url, token)
         self.history_days = history_days
+        self.sleep_target_seconds = sleep_target_seconds
+        # Derived once per refresh. 53 sensors read these; recomputing them in
+        # every native_value was about 845 aggregation passes per refresh.
+        self.latest_summary: dict[str, Any] = {}
+        self.history_summary: dict[str, Any] = {}
         self._steady_interval = timedelta(seconds=scan_interval)
         self._backfill_interval = timedelta(seconds=SLEEP_REPORT_BACKFILL_INTERVAL)
         self._reports_by_date: dict[date, dict[str, Any]] = {}
@@ -145,7 +156,17 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
             self._backfill_interval if self._pending_backfill else self._steady_interval
         )
         self._evict_older_than(today - timedelta(days=self.history_days - 1))
-        return [self._reports_by_date[key] for key in sorted(self._reports_by_date)]
+        reports = [self._reports_by_date[key] for key in sorted(self._reports_by_date)]
+        self.latest_summary = summarize_sleep_report(
+            latest_sleep_report(reports),
+            sleep_target_seconds=self.sleep_target_seconds,
+        )
+        self.history_summary = summarize_sleep_history(
+            reports,
+            sleep_target_seconds=self.sleep_target_seconds,
+            today=today,
+        )
+        return reports
 
     async def _async_backfill_one_window(self, time_zone: str) -> None:
         """Fetch the next owed history window; a failure only postpones it.

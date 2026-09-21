@@ -32,9 +32,11 @@ from .const import (
     ATTR_START_DATE,
     ATTR_TIME_ZONE,
     CONF_SCAN_INTERVAL,
+    CONF_SLEEP_TARGET_HOURS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SLEEP_REPORT_DAYS_BACK,
     DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
+    DEFAULT_SLEEP_TARGET_HOURS,
     DOMAIN,
     MAX_SLEEP_REPORT_DAYS_BACK,
     SERVICE_GET_SLEEP_REPORTS,
@@ -162,6 +164,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
             api_token,
             history_days=SLEEP_REPORT_HISTORY_DAYS,
             scan_interval=DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
+            sleep_target_seconds=(
+                entry.options.get(CONF_SLEEP_TARGET_HOURS, DEFAULT_SLEEP_TARGET_HOURS)
+                * 3600
+            ),
         )
         try:
             await report_coordinator.async_config_entry_first_refresh()
