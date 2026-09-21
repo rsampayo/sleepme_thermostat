@@ -65,3 +65,16 @@ def mock_sleepme_client() -> Generator[AsyncMock]:
             instance.set_temp_level = AsyncMock(return_value={})
             instance.set_device_status = AsyncMock(return_value={})
         yield mock_init.return_value
+
+
+@pytest.fixture(autouse=True)
+def no_command_debounce() -> Generator[None]:
+    """Send setpoint changes without the real-time wait.
+
+    A zero-second sleep still yields to the event loop, so coalescing of
+    concurrent requests behaves exactly as it does in production.
+    """
+    with patch(
+        "custom_components.sleepme_thermostat.climate.COMMAND_DEBOUNCE_SECONDS", 0
+    ):
+        yield
