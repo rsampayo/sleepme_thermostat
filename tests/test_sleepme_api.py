@@ -177,6 +177,23 @@ async def test_401_raises_auth_error_immediately(api: SleepMeAPI) -> None:
     assert mock_sleep.await_count == 0
 
 
+async def test_query_parameters_are_passed_to_httpx(api: SleepMeAPI) -> None:
+    """The transport passes sleep-report query parameters separately from URLs."""
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json = MagicMock(return_value={"reports": []})
+    api.client.request.return_value = response
+
+    params = {
+        "start_date": "2026-07-13",
+        "days_back": 6,
+        "time_zone": "Europe/Budapest",
+    }
+    await api.api_request("GET", "sleep-reports", params=params, retries=0)
+
+    assert api.client.request.await_args.kwargs["params"] == params
+
+
 async def test_compute_backoff_falls_back_when_no_retry_after() -> None:
     """Static computation: base * 2**(attempt-1)."""
     resp = _http_response(429)
@@ -209,7 +226,7 @@ async def test_get_or_create_returns_shared_instance(hass: HomeAssistant) -> Non
 
 # ---- Hypothesis property tests ---------------------------------------------
 
-from hypothesis import given  # noqa: E402
+from hypothesis import example, given  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 
@@ -219,6 +236,7 @@ from hypothesis import strategies as st  # noqa: E402
         max_size=64,
     )
 )
+@example(retry_after="-1")
 def test_compute_backoff_handles_arbitrary_retry_after(retry_after: str) -> None:
     """No printable-ASCII Retry-After string crashes _compute_backoff."""
     resp = httpx.Response(
@@ -238,3 +256,15 @@ def test_compute_backoff_no_retry_after_is_monotonic(attempt: int) -> None:
     prev = SleepMeAPI._compute_backoff(30, max(1, attempt - 1), resp)
     curr = SleepMeAPI._compute_backoff(30, attempt, resp)
     assert curr >= prev
+
+
+def test_negative_retry_after_falls_back_to_computed_backoff() -> None:
+    """A negative header must never become an immediate retry."""
+    resp = httpx.Response(
+        429,
+        headers={"Retry-After": "-1"},
+        request=httpx.Request("GET", "https://x"),
+    )
+
+    assert SleepMeAPI._compute_backoff(30, 1, resp) == 30.0
+    assert SleepMeAPI._compute_backoff(30, 2, resp) == 60.0

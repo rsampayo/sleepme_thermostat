@@ -1,9 +1,9 @@
 {
-  "title": "SleepMe Dock Pro",
+  "title": "SleepMe",
   "config": {
     "step": {
       "user": {
-        "title": "Configurar SleepMe Dock Pro",
+        "title": "Configurar dispositivo SleepMe",
         "description": "Por favor, ingrese su token de API.",
         "data": {
           "api_token": "Token de API"
@@ -14,7 +14,7 @@
       },
       "select_device": {
         "title": "Seleccionar Dispositivo",
-        "description": "Seleccione el dispositivo Dock Pro que desea configurar.",
+        "description": "Seleccione el Dock Pro, Chilipad o Sleep Tracker que desea configurar.",
         "data": {
           "device_id": "Cama / Dispositivo"
         },
@@ -23,7 +23,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Re-autenticar SleepMe Dock Pro",
+        "title": "Re-autenticar SleepMe",
         "description": "Su token de API de SleepMe ya no es válido. Ingrese un nuevo token para volver a conectarse.",
         "data": {
           "api_token": "Token de API"
@@ -45,18 +45,115 @@
       "reauth_successful": "La re-autenticación fue exitosa."
     }
   },
+  "entity": {
+    "sensor": {
+      "date": { "name": "Último informe de sueño" },
+      "sleep_score_percent": { "name": "Puntuación de sueño" },
+      "session_count": { "name": "Sesiones de sueño" },
+      "enter_bed_time": { "name": "Entrada a la cama" },
+      "exit_bed_time": { "name": "Salida de la cama" },
+      "total_session_duration": { "name": "Duración total de la sesión" },
+      "in_bed_duration": { "name": "Tiempo en la cama" },
+      "total_sleep_duration": { "name": "Duración total del sueño" },
+      "awake_duration": { "name": "Tiempo despierto" },
+      "light_sleep_duration": { "name": "Duración del sueño ligero" },
+      "rem_sleep_duration": { "name": "Duración del sueño REM" },
+      "deep_sleep_duration": { "name": "Duración del sueño profundo" },
+      "sleep_latency": { "name": "Latencia del sueño" },
+      "hypnogram_segment_count": { "name": "Segmentos del hipnograma" },
+      "sleep_efficiency_percent": { "name": "Eficiencia del sueño" },
+      "wake_after_sleep_onset": { "name": "Vigilia tras el inicio del sueño" },
+      "restorative_sleep_duration": { "name": "Duración del sueño reparador" },
+      "sleep_debt": { "name": "Deuda de sueño" },
+      "sleep_goal_percent": { "name": "Cumplimiento del objetivo de sueño" },
+      "awakening_count": { "name": "Despertares" },
+      "longest_uninterrupted_sleep_duration": { "name": "Sueño ininterrumpido más largo" },
+      "main_enter_bed_time": { "name": "Entrada a la cama del sueño principal" },
+      "main_exit_bed_time": { "name": "Salida de la cama del sueño principal" },
+      "sleep_midpoint": { "name": "Punto medio del sueño" },
+      "nap_count": { "name": "Sesiones de sueño adicionales" },
+      "nap_sleep_duration": { "name": "Duración del sueño adicional" },
+      "awake_percent": { "name": "Porcentaje despierto" },
+      "light_sleep_percent": { "name": "Porcentaje de sueño ligero" },
+      "rem_sleep_percent": { "name": "Porcentaje de sueño REM" },
+      "deep_sleep_percent": { "name": "Porcentaje de sueño profundo" },
+      "restorative_sleep_percent": { "name": "Porcentaje de sueño reparador" },
+      "tracked_nights_7d": { "name": "Noches registradas (7 días)" },
+      "average_sleep_score_percent_7d": { "name": "Puntuación media de sueño (7 días)" },
+      "average_total_sleep_duration_7d": { "name": "Duración media del sueño (7 días)" },
+      "average_sleep_efficiency_percent_7d": { "name": "Eficiencia media del sueño (7 días)" },
+      "average_sleep_latency_7d": { "name": "Latencia media del sueño (7 días)" },
+      "average_deep_sleep_percent_7d": { "name": "Sueño profundo medio (7 días)" },
+      "average_rem_sleep_percent_7d": { "name": "Sueño REM medio (7 días)" },
+      "average_awakening_count_7d": { "name": "Despertares medios (7 días)" },
+      "cumulative_sleep_debt_7d": { "name": "Deuda de sueño en las noches registradas (7 días)" },
+      "bedtime_consistency_7d": { "name": "Variación de la hora de acostarse (7 días)" },
+      "wake_time_consistency_7d": { "name": "Variación de la hora de despertar (7 días)" },
+      "tracked_nights_30d": { "name": "Noches registradas (30 días)" },
+      "average_sleep_score_percent_30d": { "name": "Puntuación media de sueño (30 días)" },
+      "average_total_sleep_duration_30d": { "name": "Duración media del sueño (30 días)" },
+      "average_sleep_efficiency_percent_30d": { "name": "Eficiencia media del sueño (30 días)" },
+      "average_sleep_latency_30d": { "name": "Latencia media del sueño (30 días)" },
+      "average_deep_sleep_percent_30d": { "name": "Sueño profundo medio (30 días)" },
+      "average_rem_sleep_percent_30d": { "name": "Sueño REM medio (30 días)" },
+      "average_awakening_count_30d": { "name": "Despertares medios (30 días)" },
+      "cumulative_sleep_debt_30d": { "name": "Deuda de sueño en las noches registradas (30 días)" },
+      "bedtime_consistency_30d": { "name": "Variación de la hora de acostarse (30 días)" },
+      "wake_time_consistency_30d": { "name": "Variación de la hora de despertar (30 días)" },
+      "environment_humidity": { "name": "Humedad ambiente" },
+      "environment_temperature": { "name": "Temperatura ambiente" },
+      "bed_temperature": { "name": "Temperatura de la cama" }
+    },
+    "binary_sensor": {
+      "bed_occupancy": { "name": "Ocupación de la cama" }
+    }
+  },
+  "exceptions": {
+    "temperature_required": { "message": "Se requiere una temperatura." },
+    "temperature_out_of_range": { "message": "La temperatura {value}°C está fuera del rango permitido {min}-{max}°C." },
+    "entry_not_found": { "message": "No se encontró la entrada de configuración de SleepMe." },
+    "entry_not_loaded": { "message": "La entrada de configuración de SleepMe no está cargada." },
+    "unknown_time_zone": { "message": "Zona horaria IANA desconocida: {time_zone}" },
+    "sleep_reports_fetch_failed": { "message": "No se pudieron obtener los informes de sueño de SleepMe: {error}" }
+  },
   "options": {
     "step": {
       "init": {
-        "title": "Opciones de SleepMe Dock Pro",
-        "description": "Ajusta con qué frecuencia Home Assistant consulta la API de SleepMe para este dispositivo. Valores más bajos son más reactivos pero consumen más de tu presupuesto de llamadas por minuto.",
+        "title": "Opciones del dispositivo SleepMe",
+        "description": "Ajusta con qué frecuencia Home Assistant consulta la API de SleepMe. Para Sleep Tracker también puedes configurar el objetivo nocturno usado por los sensores derivados de objetivo y deuda de sueño.",
         "data": {
-          "scan_interval": "Intervalo de sondeo (segundos)"
+          "scan_interval": "Intervalo de sondeo (segundos)",
+          "sleep_target_hours": "Objetivo nocturno de sueño (horas)"
         }
       }
     },
     "error": {
-      "invalid_scan_interval": "El intervalo de sondeo debe estar entre 10 y 300 segundos."
+      "invalid_scan_interval": "El intervalo de sondeo debe estar entre 10 y 300 segundos.",
+      "invalid_sleep_target": "El objetivo nocturno debe estar entre 4 y 12 horas."
+    }
+  },
+  "services": {
+    "get_sleep_reports": {
+      "name": "Obtener informes de sueño",
+      "description": "Obtiene la respuesta completa de los informes de sueño de Sleepme sin guardarla en el historial de Home Assistant.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entrada de configuración",
+          "description": "La entrada de configuración de SleepMe cuyo token de API se utilizará."
+        },
+        "end_date": {
+          "name": "Fecha final",
+          "description": "La última fecha del informe que se solicitará."
+        },
+        "days_back": {
+          "name": "Días anteriores",
+          "description": "Número de días anteriores que se incluirán, de cero a seis."
+        },
+        "time_zone": {
+          "name": "Zona horaria",
+          "description": "Nombre de zona horaria IANA. De forma predeterminada se usa la zona de Home Assistant."
+        }
+      }
     }
   }
 }

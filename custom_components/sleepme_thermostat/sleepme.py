@@ -7,6 +7,8 @@ climate command path) translate them into HA-framework exceptions.
 
 from __future__ import annotations
 
+from datetime import date
+
 from homeassistant.core import HomeAssistant
 
 from .helpers import round_half_up
@@ -55,3 +57,30 @@ class SleepMeClient:
         if not isinstance(response, dict):
             raise ValueError(f"unexpected response for device status: {response!r}")
         return response
+
+    async def get_sleep_reports(
+        self,
+        *,
+        start_date: date,
+        days_back: int,
+        time_zone: str,
+        retries: int = 0,
+    ) -> list[dict]:
+        """Return account-scoped sleep reports ending on ``start_date``."""
+        response = await self.api.api_request(
+            "GET",
+            "sleep-reports",
+            params={
+                "start_date": start_date.isoformat(),
+                "days_back": days_back,
+                "time_zone": time_zone,
+            },
+            retries=retries,
+        )
+        if not isinstance(response, dict) or not isinstance(
+            response.get("reports"), list
+        ):
+            raise ValueError(f"unexpected response for sleep reports: {response!r}")
+        if not all(isinstance(report, dict) for report in response["reports"]):
+            raise ValueError(f"unexpected response for sleep reports: {response!r}")
+        return response["reports"]

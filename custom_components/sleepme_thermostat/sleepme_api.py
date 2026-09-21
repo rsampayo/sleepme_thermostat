@@ -24,6 +24,7 @@ import asyncio
 import logging
 import time
 from collections import deque
+from collections.abc import Mapping
 from email.utils import parsedate_to_datetime
 from typing import Any
 from weakref import WeakValueDictionary
@@ -120,6 +121,7 @@ class SleepMeAPI:
         endpoint: str,
         *,
         data: dict | None = None,
+        params: Mapping[str, str | int] | None = None,
         retries: int = DEFAULT_RETRIES,
     ) -> Any:
         """Send one request with retry-on-transient-error.
@@ -134,7 +136,9 @@ class SleepMeAPI:
         while True:
             await self._enforce_local_rate_limit(method, endpoint)
             try:
-                return await self._perform_request(method, endpoint, data=data)
+                return await self._perform_request(
+                    method, endpoint, data=data, params=params
+                )
             except httpx.HTTPStatusError as err:
                 status = err.response.status_code
                 if status in (401, 403):
@@ -250,6 +254,7 @@ class SleepMeAPI:
         endpoint: str,
         *,
         data: dict | None,
+        params: Mapping[str, str | int] | None,
     ) -> Any:
         headers = {"Authorization": f"Bearer {self.token}"}
         _LOGGER.debug("%s %s/%s data=%s", method, self.api_url, endpoint, data)
@@ -258,6 +263,7 @@ class SleepMeAPI:
             f"{self.api_url}/{endpoint}",
             headers=headers,
             json=data,
+            params=params,
         )
         response.raise_for_status()
         return response.json()
@@ -278,14 +284,25 @@ class SleepMeAPI:
                 )
             return min(v, float(BACKOFF_CEILING))
 
+        fallback = float(min(base * (2 ** (attempt - 1)), BACKOFF_CEILING))
         ra = response.headers.get("Retry-After")
-        if ra:
+        if not ra:
+            return fallback
+
+        try:
+            seconds = int(ra)
+        except ValueError:
             try:
-                return _cap(float(int(ra)))
-            except ValueError:
-                try:
-                    target = parsedate_to_datetime(ra).timestamp()
-                    return _cap(max(0.0, target - time.time()))
-                except (TypeError, ValueError):
-                    _LOGGER.debug("Unparsable Retry-After: %r", ra)
-        return float(min(base * (2 ** (attempt - 1)), BACKOFF_CEILING))
+                target = parsedate_to_datetime(ra).timestamp()
+            except (TypeError, ValueError):
+                _LOGGER.debug("Unparsable Retry-After: %r", ra)
+                return fallback
+            return _cap(max(0.0, target - time.time()))
+
+        if seconds < 0:
+            # Retry-After is a non-negative integer by definition. A negative
+            # one would mean retrying at once against a server that is asking
+            # us to slow down, so it is treated like a missing header.
+            _LOGGER.debug("Ignoring negative Retry-After: %r", ra)
+            return fallback
+        return _cap(float(seconds))

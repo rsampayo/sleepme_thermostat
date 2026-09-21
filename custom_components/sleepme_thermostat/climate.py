@@ -44,7 +44,12 @@ from .const import (
     PRESET_MAX_HEAT,
     PRESET_TEMPERATURES,
 )
-from .helpers import build_device_info, clamp_api_sentinel, round_half_up
+from .helpers import (
+    build_device_info,
+    clamp_api_sentinel,
+    is_sleep_tracker,
+    round_half_up,
+)
 from .sleepme_api import (
     SleepMeAPIError,
     SleepMeAuthError,
@@ -69,9 +74,11 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SleepMe Thermostat climate entity from a config entry."""
+    """Set up a SleepMe climate entity from a config entry."""
     device_id: str = entry.data["device_id"]
     data = entry.runtime_data
+    if is_sleep_tracker(data.model):
+        return
     device_info = build_device_info(device_id, entry.title, data.device_info)
 
     _LOGGER.debug(
@@ -175,7 +182,6 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         if target_temp is None:
             # ATTR_TEMPERATURE == "temperature" — HA's service schema guarantees this.
             raise ServiceValidationError(
-                "Temperature is required",
                 translation_domain=DOMAIN,
                 translation_key="temperature_required",
             )
@@ -186,8 +192,6 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             MIN_TEMP_C <= target_temp <= MAX_TEMP_C
         ):
             raise ServiceValidationError(
-                f"Temperature {target_temp}°C is outside the allowed range "
-                f"{MIN_TEMP_C}-{MAX_TEMP_C}°C",
                 translation_domain=DOMAIN,
                 translation_key="temperature_out_of_range",
                 translation_placeholders={

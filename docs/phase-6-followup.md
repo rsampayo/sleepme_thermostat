@@ -560,7 +560,7 @@ ssh hassio@100.88.154.98 'jq ".data.entities[] | select(.platform == \"sleepme_t
 | Writable `number.brightness_level` | Phase 7+ |
 | Writable `select.display_temperature_unit` | Phase 7+ |
 | `set_temperature_f` when HA is in Fahrenheit | Phase 7+ (small but needs design — does HA's climate platform pass C or F to us?) |
-| Sleep Tracker (ST501NA) platform | Phase 7+ (whole new device class) |
+| Sleep Tracker (ST501NA) platform | Implemented for v4.3.0 after Phase 6 |
 | Split-bed (WE) pairing UX | Phase 7+ |
 | HA-side Sleep Programs blueprint | Phase 7+ |
 | `EntityDescription` refactor + entity/icon translations | Phase 7+ (unblocks HA Gold rules for translation) |

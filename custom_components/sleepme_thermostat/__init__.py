@@ -1,27 +1,67 @@
-"""SleepMe Thermostat custom integration."""
+"""SleepMe custom integration."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
+from typing import cast
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+import httpx
+import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util import dt as dt_util
+from homeassistant.util.json import JsonArrayType
 
 from .const import (
     API_URL,
+    ATTR_CONFIG_ENTRY_ID,
+    ATTR_DAYS_BACK,
+    ATTR_END_DATE,
+    ATTR_TIME_ZONE,
     CONF_SCAN_INTERVAL,
+    CONF_SLEEP_TARGET_HOURS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SLEEP_REPORT_DAYS_BACK,
+    DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
+    DEFAULT_SLEEP_TARGET_HOURS,
     DOMAIN,
+    MAX_SLEEP_REPORT_DAYS_BACK,
+    SERVICE_GET_SLEEP_REPORTS,
+    SLEEP_REPORT_HISTORY_DAYS,
 )
+from .helpers import is_sleep_tracker
 from .sleepme import SleepMeClient
-from .update_manager import SleepMeUpdateManager
+from .sleepme_api import SleepMeAPIError
+from .update_manager import SleepMeUpdateManager, SleepReportUpdateManager
 
 _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+GET_SLEEP_REPORTS_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Optional(ATTR_END_DATE): cv.date,
+        vol.Optional(ATTR_DAYS_BACK, default=DEFAULT_SLEEP_REPORT_DAYS_BACK): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=0, max=MAX_SLEEP_REPORT_DAYS_BACK),
+        ),
+        vol.Optional(ATTR_TIME_ZONE): cv.string,
+    }
+)
 
 PLATFORMS = ["climate", "binary_sensor", "sensor"]
 
@@ -36,6 +76,10 @@ class SleepMeData:
 
     client: SleepMeClient
     coordinator: SleepMeUpdateManager
+    report_coordinator: SleepReportUpdateManager | None
+    # Resolved once at setup: the stored entry value, else what the device
+    # reports. Platforms read this so they cannot disagree about device type.
+    model: str | None
     # Raw fields from entry.data; helpers.build_device_info() maps them into
     # HA's DeviceInfo TypedDict shape at platform-setup time.
     device_info: dict
@@ -46,12 +90,61 @@ type SleepMeConfigEntry = ConfigEntry[SleepMeData]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the SleepMe Thermostat component (YAML hook — unused)."""
+    """Set up integration-level actions."""
+
+    async def async_get_sleep_reports(call: ServiceCall) -> ServiceResponse:
+        """Return the requested raw report window without recorder overhead."""
+        entry = hass.config_entries.async_get_entry(call.data[ATTR_CONFIG_ENTRY_ID])
+        if entry is None or entry.domain != DOMAIN:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_not_found"
+            )
+        if entry.state is not ConfigEntryState.LOADED:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_not_loaded"
+            )
+
+        sleepme_entry = cast(SleepMeConfigEntry, entry)
+        time_zone = call.data.get(ATTR_TIME_ZONE, hass.config.time_zone)
+        # The caller supplies this string, so it is rarely cached. The async
+        # variant loads tzdata in the executor instead of blocking the loop.
+        zone = await dt_util.async_get_time_zone(time_zone)
+        if zone is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_time_zone",
+                translation_placeholders={"time_zone": str(time_zone)},
+            )
+        end_date: date = call.data.get(ATTR_END_DATE, dt_util.now(zone).date())
+
+        try:
+            reports = await sleepme_entry.runtime_data.client.get_sleep_reports(
+                # The transport layer keeps the API's own parameter name.
+                start_date=end_date,
+                days_back=call.data[ATTR_DAYS_BACK],
+                time_zone=time_zone,
+            )
+        except (SleepMeAPIError, httpx.HTTPError, ValueError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="sleep_reports_fetch_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
+        return {"reports": cast(JsonArrayType, reports)}
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_SLEEP_REPORTS,
+        async_get_sleep_reports,
+        schema=GET_SLEEP_REPORTS_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> bool:
-    """Set up SleepMe Thermostat from a config entry."""
+    """Set up a SleepMe device from a config entry."""
     api_token = entry.data.get("api_token")
     device_id = entry.data.get("device_id")
 
@@ -69,13 +162,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
     # ConfigEntryNotReady (-> HA retries setup) without further plumbing.
     await coordinator.async_config_entry_first_refresh()
 
+    model = entry.data.get("model") or coordinator.data["about"].get("model")
+    report_coordinator: SleepReportUpdateManager | None = None
+    if is_sleep_tracker(model):
+        # Known limitation: /sleep-reports is account-scoped and carries no
+        # device id, so two trackers on one token each run this coordinator and
+        # see the same sessions. The tracker is sold as a single-sleeper device
+        # per account; sharing one coordinator per token would also have to
+        # reconcile per-entry sleep targets, so it is left until someone needs it.
+        report_coordinator = SleepReportUpdateManager(
+            hass,
+            API_URL,
+            api_token,
+            history_days=SLEEP_REPORT_HISTORY_DAYS,
+            scan_interval=DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
+            sleep_target_seconds=(
+                entry.options.get(CONF_SLEEP_TARGET_HOURS, DEFAULT_SLEEP_TARGET_HOURS)
+                * 3600
+            ),
+        )
+        try:
+            await report_coordinator.async_config_entry_first_refresh()
+        except ConfigEntryNotReady as err:
+            # Reports are useful but should not take down live occupancy and
+            # environment data. CoordinatorEntity subscriptions will keep
+            # retrying; authentication failures still propagate as reauth.
+            _LOGGER.warning(
+                "Sleep reports unavailable during setup; live Tracker data will "
+                "remain available and reports will retry: %s",
+                err,
+            )
+
     entry.runtime_data = SleepMeData(
         client=client,
         coordinator=coordinator,
+        report_coordinator=report_coordinator,
+        model=model,
         device_info={
             "firmware_version": entry.data.get("firmware_version"),
             "mac_address": entry.data.get("mac_address"),
-            "model": entry.data.get("model"),
+            "model": model,
             "serial_number": entry.data.get("serial_number"),
         },
     )
@@ -89,7 +215,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
         "Entry %s set up for device %s (model=%s, fw=%s)",
         entry.entry_id,
         device_id,
-        entry.data.get("model"),
+        model,
         entry.data.get("firmware_version"),
     )
     return True
@@ -103,8 +229,8 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to the current schema.
 
-    v3 -> v4: drop `api_url` (always equals API_URL) and `name` (duplicates
-    the suffix of `entry.title`).
+    v3 -> v4: drop `api_url` (always equals API_URL) and `name`.
+    v4 -> v5: recognize existing ST501NA entries as Sleep Trackers.
     """
     _LOGGER.debug(
         "Migrating SleepMe entry %s from version %s", entry.entry_id, entry.version
@@ -117,6 +243,19 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "Migrated SleepMe entry %s to schema v4 (dropped api_url, name)",
             entry.entry_id,
         )
+
+    if entry.version < 5:
+        new_title = entry.title
+        if is_sleep_tracker(entry.data.get("model")) and entry.title.startswith(
+            "Dock Pro "
+        ):
+            new_title = f"Sleep Tracker {entry.title.removeprefix('Dock Pro ')}"
+        hass.config_entries.async_update_entry(
+            entry,
+            title=new_title,
+            version=5,
+        )
+        _LOGGER.info("Migrated SleepMe entry %s to schema v5", entry.entry_id)
 
     return True
 

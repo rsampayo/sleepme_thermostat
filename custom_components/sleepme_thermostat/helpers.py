@@ -8,6 +8,7 @@ from .const import (
     DOMAIN,
     MAX_TEMP_C,
     MIN_TEMP_C,
+    MODEL_SLEEP_TRACKER,
     PRESET_MAX_COOL,
     PRESET_MAX_HEAT,
     PRESET_TEMPERATURES,
@@ -17,6 +18,11 @@ from .const import (
 def round_half_up(n: float) -> float:
     """Round a number to the nearest .0 or .5."""
     return round(n * 2) / 2
+
+
+def is_sleep_tracker(model: str | None) -> bool:
+    """Return whether a Sleepme model identifier is the ST501NA tracker."""
+    return bool(model and model.upper() == MODEL_SLEEP_TRACKER)
 
 
 _SENTINEL_TO_LIMIT: dict[int | float, float] = {
