@@ -172,9 +172,121 @@ def test_undefined_percentages_and_malformed_shapes_are_safe() -> None:
     assert summary["date"] is None
     assert summary["session_count"] == 1
     assert summary["sleep_efficiency_percent"] is None
-    assert summary["sleep_goal_percent"] == 0.0
-    assert summary["awakening_count"] == 0
+    # A session that carries no numbers is unknown, never a confident zero.
+    assert summary["sleep_goal_percent"] is None
+    assert summary["awakening_count"] is None
     assert summarize_sleep_history([{"date": "not-a-date"}]) == {}
+
+
+def test_null_durations_read_as_unknown_not_zero() -> None:
+    """The API marks every duration nullable; null must not become 0 seconds."""
+    summary = summarize_sleep_report(
+        {
+            "date": "2026-07-12",
+            "sessions": [
+                {
+                    "total_sleep_duration": None,
+                    "in_bed_duration": None,
+                    "awake_duration": None,
+                    "sleep_latency": None,
+                    "rem_sleep_duration": None,
+                    "deep_sleep_duration": None,
+                    "light_sleep_duration": None,
+                    "total_session_duration": None,
+                }
+            ],
+        }
+    )
+
+    assert summary["total_sleep_duration"] is None
+    assert summary["in_bed_duration"] is None
+    assert summary["sleep_debt"] is None
+    assert summary["sleep_goal_percent"] is None
+    assert summary["sleep_efficiency_percent"] is None
+    assert summary["wake_after_sleep_onset"] is None
+    assert summary["restorative_sleep_duration"] is None
+    assert summary["hypnogram_segment_count"] is None
+    assert summary["awakening_count"] is None
+    assert summary["longest_uninterrupted_sleep_duration"] is None
+
+
+def test_partial_nulls_sum_only_the_known_sessions() -> None:
+    """One interrupted session must not erase the data of the other."""
+    summary = summarize_sleep_report(
+        {
+            "date": "2026-07-12",
+            "sessions": [
+                {"total_sleep_duration": 400, "in_bed_duration": 440},
+                {"total_sleep_duration": None, "in_bed_duration": 30},
+            ],
+        }
+    )
+
+    assert summary["total_sleep_duration"] == 400 * 60
+    assert summary["in_bed_duration"] == 470 * 60
+    assert summary["nap_sleep_duration"] is None
+
+
+def test_null_night_does_not_drag_history_averages() -> None:
+    """A night of nulls is left out of averages instead of counting as zero."""
+    history = summarize_sleep_history(
+        [
+            {"date": "2026-07-11", "sessions": [{"total_sleep_duration": 420}]},
+            {"date": "2026-07-12", "sessions": [{"total_sleep_duration": None}]},
+        ]
+    )
+
+    assert history["tracked_nights_7d"] == 2
+    assert history["average_total_sleep_duration_7d"] == 420 * 60
+
+
+def test_no_data_segments_are_transparent_to_awakenings() -> None:
+    """NO_DATA is a gap, not a stage: sleep -> NO_DATA -> awake is one awakening."""
+    summary = summarize_sleep_report(
+        {
+            "date": "2026-07-12",
+            "sessions": [
+                {
+                    "hypnogram": {
+                        "raw_hypnogram_segment_count": 4,
+                        "segments": [
+                            {"start": 0, "end": 60, "stage": "DEEP_SLEEP"},
+                            {"start": 60, "end": 70, "stage": "NO_DATA"},
+                            {"start": 70, "end": 80, "stage": "AWAKE"},
+                            {"start": 80, "end": 200, "stage": "LIGHT_SLEEP"},
+                        ],
+                    }
+                }
+            ],
+        }
+    )
+
+    assert summary["awakening_count"] == 1
+    # The gap breaks continuity: the longest proven run is the 120-minute one.
+    assert summary["longest_uninterrupted_sleep_duration"] == 120 * 60
+
+
+def test_no_data_gap_splits_an_uninterrupted_run() -> None:
+    """Sleep on both sides of a gap is not claimed as one continuous run."""
+    summary = summarize_sleep_report(
+        {
+            "date": "2026-07-12",
+            "sessions": [
+                {
+                    "hypnogram": {
+                        "segments": [
+                            {"start": 0, "end": 60, "stage": "DEEP_SLEEP"},
+                            {"start": 60, "end": 90, "stage": "NO_DATA"},
+                            {"start": 90, "end": 130, "stage": "REM_SLEEP"},
+                        ],
+                    }
+                }
+            ],
+        }
+    )
+
+    assert summary["awakening_count"] == 0
+    assert summary["longest_uninterrupted_sleep_duration"] == 60 * 60
 
 
 def test_clock_consistency_wraps_across_midnight() -> None:

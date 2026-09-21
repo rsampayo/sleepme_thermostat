@@ -23,6 +23,9 @@ DURATION_FIELDS = (
 )
 
 SLEEP_STAGES = frozenset({"LIGHT_SLEEP", "REM_SLEEP", "DEEP_SLEEP"})
+# Fifth value of the API's stage enum: a gap in the tracker's data, neither
+# asleep nor awake.
+NO_DATA_STAGE = "NO_DATA"
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -45,24 +48,29 @@ def summarize_sleep_report(
         return {}
 
     sessions = _sessions(report)
+    segment_counts = [
+        count
+        for session in sessions
+        if isinstance(session.get("hypnogram"), dict)
+        and (
+            count := _optional_number(
+                session["hypnogram"].get("raw_hypnogram_segment_count")
+            )
+        )
+        is not None
+    ]
     summary: dict[str, Any] = {
         "date": _parse_date(report.get("date")),
         "sleep_score_percent": _optional_number(report.get("sleep_score_percent")),
         "session_count": len(sessions),
-        "hypnogram_segment_count": sum(
-            _number(session.get("hypnogram", {}).get("raw_hypnogram_segment_count"))
-            for session in sessions
-            if isinstance(session.get("hypnogram"), dict)
-        ),
+        "hypnogram_segment_count": sum(segment_counts) if segment_counts else None,
     }
 
     # Sleepme's public report payload expresses every duration and hypnogram
     # offset in minutes. Normalize once at the boundary so HA duration entities,
     # history, goal/debt calculations, and automations consistently use seconds.
     for field in DURATION_FIELDS:
-        summary[field] = sum(
-            _minutes_to_seconds(session.get(field)) for session in sessions
-        )
+        summary[field] = _sum_minutes_as_seconds(sessions, field)
 
     enter_times = _session_datetimes(sessions, "enter_bed_time")
     exit_times = _session_datetimes(sessions, "exit_bed_time")
@@ -75,12 +83,22 @@ def summarize_sleep_report(
     latency = summary["sleep_latency"]
     rem_sleep = summary["rem_sleep_duration"]
     deep_sleep = summary["deep_sleep_duration"]
-    restorative_sleep = rem_sleep + deep_sleep
+    restorative_sleep = (
+        rem_sleep + deep_sleep
+        if rem_sleep is not None and deep_sleep is not None
+        else None
+    )
+    wake_after_sleep_onset = (
+        max(awake - latency, 0) if awake is not None and latency is not None else None
+    )
+    sleep_debt = (
+        max(sleep_target_seconds - total_sleep, 0) if total_sleep is not None else None
+    )
 
     summary.update(
         {
             "sleep_efficiency_percent": _percentage(total_sleep, in_bed),
-            "wake_after_sleep_onset": max(awake - latency, 0),
+            "wake_after_sleep_onset": wake_after_sleep_onset,
             "awake_percent": _percentage(awake, in_bed),
             "light_sleep_percent": _percentage(
                 summary["light_sleep_duration"], total_sleep
@@ -89,7 +107,7 @@ def summarize_sleep_report(
             "deep_sleep_percent": _percentage(deep_sleep, total_sleep),
             "restorative_sleep_duration": restorative_sleep,
             "restorative_sleep_percent": _percentage(restorative_sleep, total_sleep),
-            "sleep_debt": max(sleep_target_seconds - total_sleep, 0),
+            "sleep_debt": sleep_debt,
             "sleep_goal_percent": _percentage(total_sleep, sleep_target_seconds),
         }
     )
@@ -124,9 +142,10 @@ def summarize_sleep_report(
             # The API does not label naps. The longest sleep session is treated as
             # the main sleep; all additional sessions are exposed as nap metrics.
             "nap_count": len(supplemental_sessions),
-            "nap_sleep_duration": sum(
-                _minutes_to_seconds(session.get("total_sleep_duration"))
-                for session in supplemental_sessions
+            "nap_sleep_duration": (
+                _sum_minutes_as_seconds(supplemental_sessions, "total_sleep_duration")
+                if supplemental_sessions
+                else 0
             ),
         }
     )
@@ -235,10 +254,17 @@ def _session_datetimes(sessions: list[dict[str, Any]], key: str) -> list[datetim
     ]
 
 
-def _hypnogram_metrics(sessions: list[dict[str, Any]]) -> tuple[int, int | float]:
-    """Count sleep-to-awake transitions and the longest continuous sleep run."""
+def _hypnogram_metrics(
+    sessions: list[dict[str, Any]],
+) -> tuple[int | None, int | float | None]:
+    """Count sleep-to-awake transitions and the longest continuous sleep run.
+
+    Returns (None, None) when no session carried a usable hypnogram, so a
+    missing hypnogram reads as unknown instead of "0 awakenings".
+    """
     awakenings = 0
     longest_sleep: int | float = 0
+    saw_segments = False
 
     for session in sessions:
         hypnogram = session.get("hypnogram")
@@ -259,12 +285,20 @@ def _hypnogram_metrics(sessions: list[dict[str, Any]]) -> tuple[int, int | float
             ),
             key=lambda segment: _number(segment["start"]),
         )
+        if segments:
+            saw_segments = True
         previous_stage: str | None = None
         run_start: int | float | None = None
         run_end: int | float | None = None
 
         for segment in segments:
             stage = segment["stage"]
+            if stage == NO_DATA_STAGE:
+                # A data gap says nothing about the sleeper. Keep the last known
+                # stage so DEEP_SLEEP -> NO_DATA -> AWAKE still counts as an
+                # awakening. The run breaks on its own because the next sleep
+                # segment no longer starts where the previous one ended.
+                continue
             start = _minutes_to_seconds(segment["start"])
             end = _minutes_to_seconds(segment["end"])
             if end < start:
@@ -285,12 +319,16 @@ def _hypnogram_metrics(sessions: list[dict[str, Any]]) -> tuple[int, int | float
 
             previous_stage = stage
 
+    if not saw_segments:
+        return None, None
     return awakenings, longest_sleep
 
 
-def _percentage(numerator: int | float, denominator: int | float) -> float | None:
+def _percentage(
+    numerator: int | float | None, denominator: int | float | None
+) -> float | None:
     """Return a one-decimal percentage, or None when undefined."""
-    if denominator <= 0:
+    if numerator is None or denominator is None or denominator <= 0:
         return None
     return round(numerator / denominator * 100, 1)
 
@@ -352,6 +390,25 @@ def _optional_number(value: Any) -> int | float | None:
 def _number(value: Any) -> int | float:
     """Return numeric API values while treating absent/invalid values as zero."""
     return _optional_number(value) or 0
+
+
+def _sum_minutes_as_seconds(
+    sessions: list[dict[str, Any]], field: str
+) -> int | float | None:
+    """Sum one minute-valued field across sessions, in seconds.
+
+    The API marks every duration nullable. Sessions without a value are left
+    out, and the result is None when no session supplied one, so an interrupted
+    night reads as unknown instead of zero.
+    """
+    values = [
+        value
+        for session in sessions
+        if (value := _optional_number(session.get(field))) is not None
+    ]
+    if not values:
+        return None
+    return sum(_minutes_to_seconds(value) for value in values)
 
 
 def _minutes_to_seconds(value: Any) -> int | float:
