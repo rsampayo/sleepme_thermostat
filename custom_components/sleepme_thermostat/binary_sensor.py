@@ -35,7 +35,7 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = [
         DeviceConnectedBinarySensor(data.coordinator, device_id, device_info)
     ]
-    if is_sleep_tracker(entry.data.get("model")):
+    if is_sleep_tracker(data.model):
         entities.append(
             UserDetectedBinarySensor(data.coordinator, device_id, device_info)
         )
@@ -97,7 +97,7 @@ class UserDetectedBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor: the tracker currently detects a sleeper in bed."""
 
     _attr_has_entity_name = True
-    _attr_name = "Bed Occupancy"
+    _attr_translation_key = "bed_occupancy"
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
 
     def __init__(

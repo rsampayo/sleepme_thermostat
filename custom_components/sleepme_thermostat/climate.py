@@ -76,9 +76,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up a SleepMe climate entity from a config entry."""
     device_id: str = entry.data["device_id"]
-    if is_sleep_tracker(entry.data.get("model")):
-        return
     data = entry.runtime_data
+    if is_sleep_tracker(data.model):
+        return
     device_info = build_device_info(device_id, entry.title, data.device_info)
 
     _LOGGER.debug(

@@ -87,8 +87,8 @@
       "average_rem_sleep_percent_7d": { "name": "Average REM Sleep 7 Day" },
       "average_awakening_count_7d": { "name": "Average Awakenings 7 Day" },
       "cumulative_sleep_debt_7d": { "name": "Cumulative Sleep Debt 7 Day" },
-      "bedtime_consistency_7d": { "name": "Bedtime Consistency 7 Day" },
-      "wake_time_consistency_7d": { "name": "Wake Time Consistency 7 Day" },
+      "bedtime_consistency_7d": { "name": "Bedtime Variation 7 Day" },
+      "wake_time_consistency_7d": { "name": "Wake Time Variation 7 Day" },
       "tracked_nights_30d": { "name": "Tracked Nights 30 Day" },
       "average_sleep_score_percent_30d": { "name": "Average Sleep Score 30 Day" },
       "average_total_sleep_duration_30d": { "name": "Average Sleep Duration 30 Day" },
@@ -98,8 +98,14 @@
       "average_rem_sleep_percent_30d": { "name": "Average REM Sleep 30 Day" },
       "average_awakening_count_30d": { "name": "Average Awakenings 30 Day" },
       "cumulative_sleep_debt_30d": { "name": "Cumulative Sleep Debt 30 Day" },
-      "bedtime_consistency_30d": { "name": "Bedtime Consistency 30 Day" },
-      "wake_time_consistency_30d": { "name": "Wake Time Consistency 30 Day" }
+      "bedtime_consistency_30d": { "name": "Bedtime Variation 30 Day" },
+      "wake_time_consistency_30d": { "name": "Wake Time Variation 30 Day" },
+      "environment_humidity": { "name": "Environment Humidity" },
+      "environment_temperature": { "name": "Environment Temperature" },
+      "bed_temperature": { "name": "Bed Temperature" }
+    },
+    "binary_sensor": {
+      "bed_occupancy": { "name": "Bed Occupancy" }
     }
   },
   "options": {

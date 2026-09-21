@@ -226,6 +226,49 @@ async def test_only_headline_report_sensors_are_enabled_by_default(
     )
 
 
+async def test_tracker_is_recognized_when_the_entry_never_stored_a_model(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """The model is resolved once, so every platform agrees on the device type."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    device_id = "tracker-no-model"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_no_model",
+        version=5,
+        unique_id=device_id,
+        title="Sleep Tracker Unlabelled",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": device_id,
+            "firmware_version": "2.3.4-test",
+            "mac_address": "11:22:33:44:55:66",
+            "serial_number": "TRACKER-TEST-SERIAL",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+
+    def registered(platform: str, suffix: str) -> bool:
+        unique_id = f"{DOMAIN}_{device_id}_{suffix}"
+        return registry.async_get_entity_id(platform, DOMAIN, unique_id) is not None
+
+    assert entry.runtime_data.model == "ST501NA"
+    assert entry.runtime_data.report_coordinator is not None
+    assert registered("binary_sensor", "user_detected")
+    assert registered("sensor", "bed_temperature")
+    assert registered("sensor", "sleep_report_date")
+    # A tracker has nothing to control and no water.
+    assert not registered("climate", "thermostat")
+    assert not registered("binary_sensor", "water_low")
+
+
 async def test_disconnected_tracker_hides_stale_live_readings(
     hass: HomeAssistant,
     mock_sleepme_client: AsyncMock,

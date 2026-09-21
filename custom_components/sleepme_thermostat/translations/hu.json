@@ -99,7 +99,13 @@
       "average_awakening_count_30d": { "name": "Ébredések átlagos száma (30 nap)" },
       "cumulative_sleep_debt_30d": { "name": "Összesített alvásadósság (30 nap)" },
       "bedtime_consistency_30d": { "name": "Lefekvési idő ingadozása (30 nap)" },
-      "wake_time_consistency_30d": { "name": "Felkelési idő ingadozása (30 nap)" }
+      "wake_time_consistency_30d": { "name": "Felkelési idő ingadozása (30 nap)" },
+      "environment_humidity": { "name": "Környezeti páratartalom" },
+      "environment_temperature": { "name": "Környezeti hőmérséklet" },
+      "bed_temperature": { "name": "Ágy hőmérséklete" }
+    },
+    "binary_sensor": {
+      "bed_occupancy": { "name": "Ágyfoglaltság" }
     }
   },
   "options": {

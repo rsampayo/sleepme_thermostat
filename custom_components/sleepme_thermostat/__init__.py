@@ -75,6 +75,9 @@ class SleepMeData:
     client: SleepMeClient
     coordinator: SleepMeUpdateManager
     report_coordinator: SleepReportUpdateManager | None
+    # Resolved once at setup: the stored entry value, else what the device
+    # reports. Platforms read this so they cannot disagree about device type.
+    model: str | None
     # Raw fields from entry.data; helpers.build_device_info() maps them into
     # HA's DeviceInfo TypedDict shape at platform-setup time.
     device_info: dict
@@ -176,10 +179,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
         client=client,
         coordinator=coordinator,
         report_coordinator=report_coordinator,
+        model=model,
         device_info={
             "firmware_version": entry.data.get("firmware_version"),
             "mac_address": entry.data.get("mac_address"),
-            "model": entry.data.get("model"),
+            "model": model,
             "serial_number": entry.data.get("serial_number"),
         },
     )
@@ -193,7 +197,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
         "Entry %s set up for device %s (model=%s, fw=%s)",
         entry.entry_id,
         device_id,
-        entry.data.get("model"),
+        model,
         entry.data.get("firmware_version"),
     )
     return True

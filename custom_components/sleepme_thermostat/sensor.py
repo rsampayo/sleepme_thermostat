@@ -53,7 +53,7 @@ async def async_setup_entry(
         FirmwareVersionSensor(data.coordinator, device_id, device_info),
     ]
 
-    if is_sleep_tracker(entry.data.get("model")):
+    if is_sleep_tracker(data.model):
         entities.extend(
             [
                 TrackerEnvironmentHumiditySensor(
@@ -299,12 +299,12 @@ class _SleepMeTrackerSensor(CoordinatorEntity, SensorEntity):
         device_info: DeviceInfo,
         *,
         suffix: str,
-        label: str,
         status_key: str,
     ) -> None:
         super().__init__(coordinator)
         self._status_key = status_key
-        self._attr_name = label
+        # The displayed name comes from strings.json under this key.
+        self._attr_translation_key = suffix
         self._attr_unique_id = f"{DOMAIN}_{device_id}_{suffix}"
         self._attr_device_info = device_info
 
@@ -342,7 +342,6 @@ class TrackerEnvironmentHumiditySensor(_SleepMeTrackerSensor):
             device_id,
             device_info,
             suffix="environment_humidity",
-            label="Environment Humidity",
             status_key="environment_humidity",
         )
 
@@ -364,7 +363,6 @@ class TrackerEnvironmentTemperatureSensor(_SleepMeTrackerSensor):
             device_id,
             device_info,
             suffix="environment_temperature",
-            label="Environment Temperature",
             status_key="environment_temperature_c",
         )
 
@@ -386,7 +384,6 @@ class TrackerBedTemperatureSensor(_SleepMeTrackerSensor):
             device_id,
             device_info,
             suffix="bed_temperature",
-            label="Bed Temperature",
             status_key="bed_temperature_c",
         )
 
@@ -414,10 +411,8 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
     ) -> None:
         super().__init__(coordinator)
         self._key = key
-        # Keep the English label beside the entity definition for maintainers,
-        # while HA resolves the displayed name through strings.json and the
-        # active frontend language (falling back to English when untranslated).
-        self._english_label = label
+        # `label` documents the English name beside each definition. HA shows
+        # the strings.json entry for `key`; a test keeps the two in step.
         self._attr_translation_key = key
         self._attr_unique_id = f"{DOMAIN}_{device_id}_sleep_report_{key}"
         self._attr_device_info = device_info
@@ -700,7 +695,7 @@ def _build_sleep_report_sensors(
                 },
                 {
                     "key": f"bedtime_consistency{suffix}",
-                    "label": f"Bedtime Consistency {days} Day",
+                    "label": f"Bedtime Variation {days} Day",
                     "device_class": SensorDeviceClass.DURATION,
                     "unit": UnitOfTime.MINUTES,
                     "state_class": SensorStateClass.MEASUREMENT,
@@ -708,7 +703,7 @@ def _build_sleep_report_sensors(
                 },
                 {
                     "key": f"wake_time_consistency{suffix}",
-                    "label": f"Wake Time Consistency {days} Day",
+                    "label": f"Wake Time Variation {days} Day",
                     "device_class": SensorDeviceClass.DURATION,
                     "unit": UnitOfTime.MINUTES,
                     "state_class": SensorStateClass.MEASUREMENT,
