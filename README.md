@@ -40,7 +40,6 @@
 - Derived sleep efficiency, wake after sleep onset, stage percentages, restorative sleep, awakenings, longest uninterrupted sleep, main-session timing, sleep midpoint, and additional-session metrics.
 - Configurable sleep goal with nightly goal percentage, sleep debt, and cumulative 7/30-day debt.
 - Seven- and thirty-day averages plus bedtime/wake-time variation. The windows end today, so an unused tracker reads as no data rather than as an old week.
-- Five ready-to-import automation blueprints for occupancy actions, presence-aware Dock control with an occupied wake-time extension, return-to-bed temperature adjustment, Warm Awake, and sleep-report alerts.
 - A response-only `sleepme_thermostat.get_sleep_reports` action returns the lossless raw reports, including session IDs and every hypnogram segment, without storing that large health payload in Home Assistant's recorder.
 - Sleep reports cover 30 days. Only the newest week is refreshed, once every 30 minutes with a single request, to protect the API request budget. Older weeks are fetched once after startup and cached.
 
@@ -136,19 +135,11 @@ response_variable: sleepme_data
 
 The raw API expresses report durations and hypnogram offsets in minutes. Sensor entities normalize them to seconds for Home Assistant's duration device class; the response-only action deliberately preserves the raw minute values. Normal sensors intentionally keep hypnogram arrays out of state attributes so Home Assistant's recorder does not duplicate a large health-data payload every refresh. Sleepme's consumer app documents heart rate, HRV, and respiration, but the current public `/sleep-reports` response does not expose those fields; this integration cannot create values that the public API does not return.
 
-## Automation blueprints
+## Automations
 
-Import any blueprint in *Settings → Automations & Scenes → Blueprints → Import Blueprint* using its raw URL:
+Bed occupancy and the report sensors are ordinary Home Assistant entities, so presence routines, warm-awake schedules and report alerts can be built with standard automations. Ready-made blueprints are being prepared separately and are not part of this release.
 
-| Blueprint | What it reproduces with HA data |
-|---|---|
-| [Occupancy actions](blueprints/automation/sleepme_thermostat/tracker_occupancy_actions.yaml) | Run lights, scenes, locks, or notifications when bed occupancy changes |
-| [Presence-aware Dock control](blueprints/automation/sleepme_thermostat/dock_presence_control.yaml) | Early/late bedtime, scheduled start, early wake, and snooze-safe shutdown |
-| [Return-to-bed adjustment](blueprints/automation/sleepme_thermostat/dock_back_to_sleep.yaml) | Temporary configurable Dock adjustment after an overnight absence and return |
-| [Warm-awake routine](blueprints/automation/sleepme_thermostat/tracker_warm_awake.yaml) | Warm an occupied bed before wake time for a configurable duration, then stop |
-| [Sleep report alert](blueprints/automation/sleepme_thermostat/sleep_report_alert.yaml) | Notify on transparent score, duration, efficiency, latency, and deep-sleep thresholds |
-
-These are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml).
+Such automations are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml).
 
 All HA-supported frontend languages can load and use the integration. Entity and option text uses HA's translation system; Spanish and complete native Hungarian translations are included, while every remaining locale receives HA's built-in English fallback instead of broken or missing labels.
 

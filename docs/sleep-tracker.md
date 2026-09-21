@@ -36,13 +36,13 @@ The personal sleep target is configured under *Settings â†’ Devices & Services â
 
 | Sleepme-style capability | Pure HA result |
 |---|---|
-| Bed presence routines | Fully reproducible from live occupancy using the included occupancy blueprint |
+| Bed presence routines | Fully reproducible from live occupancy with a standard occupancy-triggered automation |
 | Early to bed | Reproducible: occupancy within a configurable pre-bedtime window starts the Dock |
 | Late to bed | Reproducible: an empty bed stays off at bedtime and later occupancy starts the Dock inside the overnight window |
 | Wake up early | Reproducible: confirmed empty-bed state stops the Dock before the scheduled end |
 | Snooze | Reproducible: occupancy at wake time uses a configurable extension; a later empty event can stop it sooner |
-| Warm Awake | Reproducible with the included occupied-bed warm-awake blueprint; lead time, temperature, and duration remain explicit HA inputs |
-| Return-to-bed temperature assistance | Approximate, user-controlled rule via the included temporary-adjustment blueprint |
+| Warm Awake | Reproducible with a time-and-occupancy automation; lead time, temperature, and duration remain explicit HA inputs |
+| Return-to-bed temperature assistance | Approximate, user-controlled rule via a temporary-adjustment automation |
 | Sleep-quality summaries and threshold alerts | Reproducible from finalized report sensors |
 | Trend dashboards and correlations with room climate | Reproducible using Recorder/history/statistics and HA dashboards |
 | Hiber-AI automatic temperature optimization | Not reproducible exactly; its model/inputs are proprietary and the public API exposes no equivalent control signal |
@@ -50,17 +50,15 @@ The personal sleep target is configured under *Settings â†’ Devices & Services â
 | Heart rate, HRV, respiration | Not available in the current public response |
 | True movement/disturbance events | Not available as labeled public fields; awakenings are only stage transitions |
 
-## Included blueprints
+## Known limitations
 
-The repository ships five automation blueprints under `blueprints/automation/sleepme_thermostat/`. Import the desired raw GitHub URL in HA's Blueprint UI after this branch is merged.
+- Sleep reports belong to the Sleepme account, not to a device. The API gives no way to tell which tracker recorded a session, so two trackers on one account would show the same reports.
+- Report sensors describe finalized sessions. Sleepme finalizes a report about 15 minutes after the sleeper leaves the bed.
+- While the tracker is offline, its live sensors and Bed Occupancy are unavailable. The API keeps returning the last known values, and those are not shown as current.
 
-- `tracker_occupancy_actions.yaml`: independent occupied/empty delays and arbitrary action selectors.
-- `dock_presence_control.yaml`: an overnight window, early-start allowance, scheduled start/end, occupancy gating, delayed empty shutdown, and configurable extension while still occupied at wake time.
-- `dock_back_to_sleep.yaml`: waits for a return after an overnight absence, applies a signed target-temperature adjustment, and restores the original setpoint. Its default warming step approximates Sleepme's documented +5 Â°F behavior in Celsius-oriented installations and remains user-configurable.
-- `tracker_warm_awake.yaml`: starts before wake time only when the bed is occupied, warms for the chosen duration, then stops the Dock.
-- `sleep_report_alert.yaml`: evaluates a finalized report against visible thresholds and exposes `sleepme_alert_message` to notification actions.
+## Blueprints
 
-The return-to-bed automation is intentionally described as a heuristic rather than Hiber-AI. Start with a small signed adjustment appropriate for your HA temperature unit, observe comfort, and disable it if it conflicts with another Dock schedule.
+Ready-made automation blueprints for the routines above are being prepared separately and are not part of this release. Home Assistant only loads blueprints from `<config>/blueprints/`, and HACS only installs `custom_components/`, so they will be offered as imports by URL.
 
 ## Privacy and Recorder behavior
 

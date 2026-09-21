@@ -165,6 +165,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
     model = entry.data.get("model") or coordinator.data["about"].get("model")
     report_coordinator: SleepReportUpdateManager | None = None
     if is_sleep_tracker(model):
+        # Known limitation: /sleep-reports is account-scoped and carries no
+        # device id, so two trackers on one token each run this coordinator and
+        # see the same sessions. The tracker is sold as a single-sleeper device
+        # per account; sharing one coordinator per token would also have to
+        # reconcile per-entry sleep targets, so it is left until someone needs it.
         report_coordinator = SleepReportUpdateManager(
             hass,
             API_URL,

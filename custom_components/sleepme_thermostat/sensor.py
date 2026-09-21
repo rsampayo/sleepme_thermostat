@@ -425,7 +425,7 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
 
 
 # Report sensors enabled out of the box: the headline numbers, and every sensor
-# the shipped sleep_report_alert blueprint binds to. The other 41 are still
+# a sleep-report alert automation needs. The other 41 are still
 # registered, so users can enable them, but stay off by default. 47 of the 53
 # carry a state class, and values that change once a day are not worth five
 # minute statistics rows forever. Registry defaults are hard to change later.
