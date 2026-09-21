@@ -215,13 +215,14 @@ def _sessions(report: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _main_session(sessions: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Select the longest-sleep session as the main daily sleep."""
+    if not sessions:
+        return None
     return max(
         sessions,
         key=lambda session: (
             _number(session.get("total_sleep_duration")),
             _number(session.get("total_session_duration")),
         ),
-        default=None,
     )
 
 

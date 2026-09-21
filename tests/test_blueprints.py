@@ -418,9 +418,9 @@ async def test_entity_translations_fall_back_for_every_ha_language(
         entity_strings = await translation.async_get_translations(
             hass, language, "entity", {DOMAIN}
         )
-        assert {key: entity_strings.get(key) for key in entity_names} == entity_names, (
-            language
-        )
+        assert {
+            key: entity_strings.get(key) for key in entity_names
+        } == entity_names, language
 
         option_strings = await translation.async_get_translations(
             hass, language, "options", {DOMAIN}
