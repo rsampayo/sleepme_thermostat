@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 from homeassistant.config_entries import ConfigEntryAuthFailed
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import MAX_SLEEP_REPORT_DAYS_BACK
 from .sleepme import SleepMeClient
@@ -91,12 +91,10 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
         api_url: str,
         token: str,
         *,
-        time_zone: str,
         history_days: int,
         scan_interval: int,
     ) -> None:
         self.client = SleepMeClient(hass, api_url, token)
-        self.time_zone = time_zone
         self.history_days = history_days
         super().__init__(
             hass,
@@ -107,7 +105,11 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Fetch and merge non-overlapping report windows through today."""
-        end_date = datetime.now(ZoneInfo(self.time_zone)).date()
+        # dt_util.now() uses HA's configured zone, which HA loads off the event
+        # loop at startup. Building a ZoneInfo here would read tzdata from disk
+        # inside the loop, and would also miss a later time-zone change.
+        time_zone = self.hass.config.time_zone
+        end_date = dt_util.now().date()
         reports_by_date: dict[str, dict[str, Any]] = {}
         undated_reports: list[dict[str, Any]] = []
 
@@ -116,7 +118,7 @@ class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
                 self.client.get_sleep_reports(
                     start_date=window_end,
                     days_back=days_back,
-                    time_zone=self.time_zone,
+                    time_zone=time_zone,
                 )
             )
             for report in reports:

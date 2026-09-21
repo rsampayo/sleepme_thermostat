@@ -97,7 +97,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         sleepme_entry = cast(SleepMeConfigEntry, entry)
         time_zone = call.data.get(ATTR_TIME_ZONE, hass.config.time_zone)
-        zone = dt_util.get_time_zone(time_zone)
+        # The caller supplies this string, so it is rarely cached. The async
+        # variant loads tzdata in the executor instead of blocking the loop.
+        zone = await dt_util.async_get_time_zone(time_zone)
         if zone is None:
             raise ServiceValidationError(f"Unknown IANA time zone: {time_zone}")
         start_date: date = call.data.get(ATTR_START_DATE, dt_util.now(zone).date())
@@ -155,7 +157,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
             hass,
             API_URL,
             api_token,
-            time_zone=hass.config.time_zone,
             history_days=SLEEP_REPORT_HISTORY_DAYS,
             scan_interval=DEFAULT_SLEEP_REPORT_SCAN_INTERVAL,
         )
