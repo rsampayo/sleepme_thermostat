@@ -432,6 +432,29 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
         ).get(self._key)
 
 
+# Report sensors enabled out of the box: the headline numbers, and every sensor
+# the shipped sleep_report_alert blueprint binds to. The other 41 are still
+# registered, so users can enable them, but stay off by default. 47 of the 53
+# carry a state class, and values that change once a day are not worth five
+# minute statistics rows forever. Registry defaults are hard to change later.
+REPORT_SENSORS_ENABLED_BY_DEFAULT = frozenset(
+    {
+        "date",
+        "sleep_score_percent",
+        "total_sleep_duration",
+        "sleep_efficiency_percent",
+        "sleep_latency",
+        "awakening_count",
+        "deep_sleep_percent",
+        "rem_sleep_percent",
+        "main_enter_bed_time",
+        "main_exit_bed_time",
+        "sleep_debt",
+        "sleep_goal_percent",
+    }
+)
+
+
 def _build_sleep_report_sensors(
     coordinator: SleepReportUpdateManager,
     device_id: str,
@@ -688,6 +711,7 @@ def _build_sleep_report_sensors(
             device_id,
             device_info,
             sleep_target_seconds=sleep_target_seconds,
+            enabled_default=definition["key"] in REPORT_SENSORS_ENABLED_BY_DEFAULT,
             **definition,
         )
         for definition in definitions
@@ -698,6 +722,7 @@ def _build_sleep_report_sensors(
             device_info,
             scope="history",
             sleep_target_seconds=sleep_target_seconds,
+            enabled_default=False,
             **definition,
         )
         for definition in history_definitions

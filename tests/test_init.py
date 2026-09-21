@@ -5,6 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 from custom_components.sleepme_thermostat.const import API_URL, DOMAIN
+from custom_components.sleepme_thermostat.sensor import (
+    REPORT_SENSORS_ENABLED_BY_DEFAULT,
+)
 from custom_components.sleepme_thermostat.sleepme_api import (
     SleepMeAuthError,
     SleepMeConnectionError,
@@ -63,8 +66,13 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
     hass: HomeAssistant,
     mock_sleepme_client: AsyncMock,
     tracker_status: dict,
+    entity_registry_enabled_by_default: None,
 ) -> None:
-    """ST501NA gets tracker entities, report entities, and no climate entity."""
+    """ST501NA gets tracker entities, report entities, and no climate entity.
+
+    Every entity is force-enabled here so the long-tail report sensors, which
+    ship disabled, still have their values checked.
+    """
     # German is intentionally not bundled: HA must resolve the English source
     # fallback, proving unsupported integration locales remain fully usable.
     hass.config.language = "de"
@@ -151,6 +159,66 @@ async def test_tracker_entry_loads_all_live_and_report_entities(
             f"{DOMAIN}_{device_id}_thermostat",
         )
         is None
+    )
+
+
+async def test_only_headline_report_sensors_are_enabled_by_default(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """All 53 report sensors register, but only the headline set is enabled."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    device_id = "tracker-defaults"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_defaults",
+        version=5,
+        unique_id=device_id,
+        title="Sleep Tracker Defaults",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": device_id,
+            "firmware_version": "2.3.4-test",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-TEST-SERIAL",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    prefix = f"{DOMAIN}_{device_id}_sleep_report_"
+    report_entries = [
+        registry_entry
+        for registry_entry in er.async_entries_for_config_entry(
+            er.async_get(hass), entry.entry_id
+        )
+        if registry_entry.unique_id.startswith(prefix)
+    ]
+    enabled_keys = {
+        registry_entry.unique_id.removeprefix(prefix)
+        for registry_entry in report_entries
+        if registry_entry.disabled_by is None
+    }
+    disabled = [
+        registry_entry
+        for registry_entry in report_entries
+        if registry_entry.disabled_by is not None
+    ]
+
+    assert len(report_entries) == 53
+    assert enabled_keys == REPORT_SENSORS_ENABLED_BY_DEFAULT
+    assert len(disabled) == 41
+    assert all(
+        registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        for registry_entry in disabled
+    )
+    # A disabled entity writes no state, so the recorder never sees it.
+    assert all(
+        hass.states.get(registry_entry.entity_id) is None for registry_entry in disabled
     )
 
 

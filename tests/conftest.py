@@ -84,3 +84,17 @@ def mock_sleepme_client(sleep_reports: list[dict]) -> Generator[AsyncMock]:
         mock_init.return_value = instance
         mock_um.return_value = instance
         yield instance
+
+
+@pytest.fixture
+def entity_registry_enabled_by_default() -> Generator[None]:
+    """Register every entity as enabled, including ones that ship disabled.
+
+    Mirrors the fixture of the same name in Home Assistant core's test suite,
+    which pytest-homeassistant-custom-component does not re-export.
+    """
+    with patch(
+        "homeassistant.helpers.entity.Entity.entity_registry_enabled_default",
+        return_value=True,
+    ):
+        yield
