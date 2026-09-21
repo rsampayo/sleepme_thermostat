@@ -5,7 +5,7 @@ get_sleep_reports:
       selector:
         config_entry:
           integration: sleepme_thermostat
-    start_date:
+    end_date:
       required: false
       selector:
         date:

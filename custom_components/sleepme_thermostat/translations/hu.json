@@ -108,6 +108,14 @@
       "bed_occupancy": { "name": "Ágyfoglaltság" }
     }
   },
+  "exceptions": {
+    "temperature_required": { "message": "A hőmérséklet megadása kötelező." },
+    "temperature_out_of_range": { "message": "A(z) {value}°C hőmérséklet kívül esik a megengedett {min}-{max}°C tartományon." },
+    "entry_not_found": { "message": "A SleepMe konfigurációs bejegyzés nem található." },
+    "entry_not_loaded": { "message": "A SleepMe konfigurációs bejegyzés nincs betöltve." },
+    "unknown_time_zone": { "message": "Ismeretlen IANA időzóna: {time_zone}" },
+    "sleep_reports_fetch_failed": { "message": "Nem sikerült lekérni a SleepMe alvásjelentéseket: {error}" }
+  },
   "options": {
     "step": {
       "init": {
@@ -133,7 +141,7 @@
           "name": "Konfigurációs bejegyzés",
           "description": "A betöltött SleepMe konfigurációs bejegyzés, amelyhez tartozó API-tokent a művelet használja."
         },
-        "start_date": {
+        "end_date": {
           "name": "Záró dátum",
           "description": "A lekérendő utolsó jelentés dátuma. Alapértelmezés szerint a kiválasztott időzóna szerinti mai nap."
         },

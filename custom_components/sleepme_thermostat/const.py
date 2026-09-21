@@ -6,7 +6,9 @@ MODEL_SLEEP_TRACKER = "ST501NA"
 
 SERVICE_GET_SLEEP_REPORTS = "get_sleep_reports"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
-ATTR_START_DATE = "start_date"
+# The API calls this parameter start_date, but it is the LAST date of the
+# window (confirmed against the live API). The HA-facing field says so.
+ATTR_END_DATE = "end_date"
 ATTR_DAYS_BACK = "days_back"
 ATTR_TIME_ZONE = "time_zone"
 

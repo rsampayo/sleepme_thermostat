@@ -29,7 +29,7 @@ from .const import (
     API_URL,
     ATTR_CONFIG_ENTRY_ID,
     ATTR_DAYS_BACK,
-    ATTR_START_DATE,
+    ATTR_END_DATE,
     ATTR_TIME_ZONE,
     CONF_SCAN_INTERVAL,
     CONF_SLEEP_TARGET_HOURS,
@@ -54,7 +54,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 GET_SLEEP_REPORTS_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
-        vol.Optional(ATTR_START_DATE): cv.date,
+        vol.Optional(ATTR_END_DATE): cv.date,
         vol.Optional(ATTR_DAYS_BACK, default=DEFAULT_SLEEP_REPORT_DAYS_BACK): vol.All(
             vol.Coerce(int),
             vol.Range(min=0, max=MAX_SLEEP_REPORT_DAYS_BACK),
@@ -96,9 +96,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         """Return the requested raw report window without recorder overhead."""
         entry = hass.config_entries.async_get_entry(call.data[ATTR_CONFIG_ENTRY_ID])
         if entry is None or entry.domain != DOMAIN:
-            raise ServiceValidationError("SleepMe config entry not found")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_not_found"
+            )
         if entry.state is not ConfigEntryState.LOADED:
-            raise ServiceValidationError("SleepMe config entry is not loaded")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_not_loaded"
+            )
 
         sleepme_entry = cast(SleepMeConfigEntry, entry)
         time_zone = call.data.get(ATTR_TIME_ZONE, hass.config.time_zone)
@@ -106,23 +110,26 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         # variant loads tzdata in the executor instead of blocking the loop.
         zone = await dt_util.async_get_time_zone(time_zone)
         if zone is None:
-            raise ServiceValidationError(f"Unknown IANA time zone: {time_zone}")
-        start_date: date = call.data.get(ATTR_START_DATE, dt_util.now(zone).date())
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_time_zone",
+                translation_placeholders={"time_zone": str(time_zone)},
+            )
+        end_date: date = call.data.get(ATTR_END_DATE, dt_util.now(zone).date())
 
         try:
             reports = await sleepme_entry.runtime_data.client.get_sleep_reports(
-                start_date=start_date,
+                # The transport layer keeps the API's own parameter name.
+                start_date=end_date,
                 days_back=call.data[ATTR_DAYS_BACK],
                 time_zone=time_zone,
             )
-        except SleepMeAPIError as err:
+        except (SleepMeAPIError, httpx.HTTPError, ValueError) as err:
             raise HomeAssistantError(
-                f"Could not fetch SleepMe sleep reports: {err}"
+                translation_domain=DOMAIN,
+                translation_key="sleep_reports_fetch_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
-        except httpx.HTTPError as err:
-            raise HomeAssistantError("Could not fetch SleepMe sleep reports") from err
-        except ValueError as err:
-            raise HomeAssistantError(str(err)) from err
 
         return {"reports": cast(JsonArrayType, reports)}
 

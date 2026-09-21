@@ -108,6 +108,14 @@
       "bed_occupancy": { "name": "Bed Occupancy" }
     }
   },
+  "exceptions": {
+    "temperature_required": { "message": "Temperature is required." },
+    "temperature_out_of_range": { "message": "Temperature {value}°C is outside the allowed range {min}-{max}°C." },
+    "entry_not_found": { "message": "SleepMe config entry not found." },
+    "entry_not_loaded": { "message": "SleepMe config entry is not loaded." },
+    "unknown_time_zone": { "message": "Unknown IANA time zone: {time_zone}" },
+    "sleep_reports_fetch_failed": { "message": "Could not fetch SleepMe sleep reports: {error}" }
+  },
   "options": {
     "step": {
       "init": {
@@ -133,7 +141,7 @@
           "name": "Config entry",
           "description": "The loaded SleepMe configuration entry whose API token should be used."
         },
-        "start_date": {
+        "end_date": {
           "name": "End date",
           "description": "The final report date to request. Defaults to today in the selected time zone."
         },

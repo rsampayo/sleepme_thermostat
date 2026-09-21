@@ -108,6 +108,14 @@
       "bed_occupancy": { "name": "Ocupación de la cama" }
     }
   },
+  "exceptions": {
+    "temperature_required": { "message": "Se requiere una temperatura." },
+    "temperature_out_of_range": { "message": "La temperatura {value}°C está fuera del rango permitido {min}-{max}°C." },
+    "entry_not_found": { "message": "No se encontró la entrada de configuración de SleepMe." },
+    "entry_not_loaded": { "message": "La entrada de configuración de SleepMe no está cargada." },
+    "unknown_time_zone": { "message": "Zona horaria IANA desconocida: {time_zone}" },
+    "sleep_reports_fetch_failed": { "message": "No se pudieron obtener los informes de sueño de SleepMe: {error}" }
+  },
   "options": {
     "step": {
       "init": {
@@ -133,7 +141,7 @@
           "name": "Entrada de configuración",
           "description": "La entrada de configuración de SleepMe cuyo token de API se utilizará."
         },
-        "start_date": {
+        "end_date": {
           "name": "Fecha final",
           "description": "La última fecha del informe que se solicitará."
         },

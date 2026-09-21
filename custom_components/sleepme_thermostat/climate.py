@@ -182,7 +182,6 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         if target_temp is None:
             # ATTR_TEMPERATURE == "temperature" — HA's service schema guarantees this.
             raise ServiceValidationError(
-                "Temperature is required",
                 translation_domain=DOMAIN,
                 translation_key="temperature_required",
             )
@@ -193,8 +192,6 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             MIN_TEMP_C <= target_temp <= MAX_TEMP_C
         ):
             raise ServiceValidationError(
-                f"Temperature {target_temp}°C is outside the allowed range "
-                f"{MIN_TEMP_C}-{MAX_TEMP_C}°C",
                 translation_domain=DOMAIN,
                 translation_key="temperature_out_of_range",
                 translation_placeholders={

@@ -128,7 +128,7 @@ The public API returns up to seven days per request. Use the response-only actio
 action: sleepme_thermostat.get_sleep_reports
 data:
   config_entry_id: 01JEXAMPLECONFIGENTRY
-  start_date: "2026-07-13"
+  end_date: "2026-07-13"
   days_back: 6
   time_zone: Europe/Budapest
 response_variable: sleepme_data

@@ -70,3 +70,23 @@ def _collect_report_labels() -> dict[str, str]:
 
 
 _REPORT_LABELS = _collect_report_labels()
+
+
+def test_every_exception_key_raised_in_code_has_a_message() -> None:
+    """A key without a string would show the raw key to the user."""
+    import re
+
+    raised_keys: set[str] = set()
+    for source in INTEGRATION.glob("*.py"):
+        text = source.read_text(encoding="utf-8")
+        for match in re.finditer(
+            r"raise (?:ServiceValidationError|HomeAssistantError)\((.*?)\n\s*\)",
+            text,
+            flags=re.DOTALL,
+        ):
+            key = re.search(r'translation_key="([a-z_]+)"', match.group(1))
+            if key:
+                raised_keys.add(key.group(1))
+
+    assert raised_keys, "no translated exceptions found; the scan is broken"
+    assert raised_keys <= set(STRINGS["exceptions"])

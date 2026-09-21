@@ -9,7 +9,7 @@ import pytest
 from custom_components.sleepme_thermostat.const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_DAYS_BACK,
-    ATTR_START_DATE,
+    ATTR_END_DATE,
     ATTR_TIME_ZONE,
     DOMAIN,
     SERVICE_GET_SLEEP_REPORTS,
@@ -57,7 +57,7 @@ async def test_get_sleep_reports_returns_raw_payload(
         SERVICE_GET_SLEEP_REPORTS,
         {
             ATTR_CONFIG_ENTRY_ID: entry.entry_id,
-            ATTR_START_DATE: "2026-07-13",
+            ATTR_END_DATE: "2026-07-13",
             ATTR_DAYS_BACK: 6,
             ATTR_TIME_ZONE: "Europe/Budapest",
         },
@@ -81,7 +81,7 @@ async def test_get_sleep_reports_rejects_unknown_entry(
     from custom_components.sleepme_thermostat import async_setup
 
     await async_setup(hass, {})
-    with pytest.raises(ServiceValidationError, match="not found"):
+    with pytest.raises(ServiceValidationError) as raised:
         await hass.services.async_call(
             DOMAIN,
             SERVICE_GET_SLEEP_REPORTS,
@@ -89,3 +89,6 @@ async def test_get_sleep_reports_rejects_unknown_entry(
             blocking=True,
             return_response=True,
         )
+    # The message is translated by HA from this key, not hardcoded in English.
+    assert raised.value.translation_domain == DOMAIN
+    assert raised.value.translation_key == "entry_not_found"
