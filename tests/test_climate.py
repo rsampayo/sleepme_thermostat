@@ -462,3 +462,151 @@ async def test_optimistic_window_expires(
     state = hass.states.get(ENTITY_ID)
     # Coordinator's mock still reports 22.0; optimistic is gone.
     assert state.attributes["temperature"] == 22.0
+
+
+# ---------- command budget: one request per user action ------------------------
+
+
+async def _set_temperature(hass: HomeAssistant, temperature: float) -> None:
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_TEMPERATURE: temperature},
+        blocking=True,
+    )
+
+
+async def test_rapid_setpoint_clicks_send_one_patch_with_the_last_value(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """Four clicks on the up arrow are one command, not four.
+
+    On 2026-09-20 four clicks in nine seconds exhausted the nine-per-minute
+    account budget: two were refused with an error toast and the following
+    polls failed, leaving the entities unavailable.
+    """
+    import asyncio
+
+    await _setup(hass)
+
+    await asyncio.gather(
+        _set_temperature(hass, 27.5),
+        _set_temperature(hass, 28.0),
+        _set_temperature(hass, 28.5),
+        _set_temperature(hass, 29.0),
+    )
+    await hass.async_block_till_done()
+
+    mock_sleepme_client.set_temp_level.assert_awaited_once_with(29.0)
+    assert hass.states.get(ENTITY_ID).attributes["temperature"] == 29.0
+
+
+async def test_setpoint_shows_immediately_while_the_command_waits(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """The UI answers before the PATCH is sent, not after it returns."""
+    import asyncio
+
+    await _setup(hass)
+    release = asyncio.Event()
+    seen_while_in_flight: list[float] = []
+
+    async def slow_patch(_temperature: float) -> dict:
+        seen_while_in_flight.append(
+            hass.states.get(ENTITY_ID).attributes["temperature"]
+        )
+        await release.wait()
+        return {}
+
+    mock_sleepme_client.set_temp_level.side_effect = slow_patch
+
+    call = hass.async_create_task(_set_temperature(hass, 26.0))
+    while not seen_while_in_flight:
+        await asyncio.sleep(0)
+    release.set()
+    await call
+
+    assert seen_while_in_flight == [26.0]
+
+
+async def test_a_command_costs_one_request_and_no_refresh(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """No poll follows a command; the next regular poll reconciles."""
+    entry = await _setup(hass)
+    # The coordinator owns its own client instance, separate from the entry's.
+    poll = entry.runtime_data.coordinator.client.get_device_status
+    polls_before = poll.await_count
+    assert polls_before >= 1
+
+    await _set_temperature(hass, 26.0)
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_HVAC_MODE: HVACMode.AUTO},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert poll.await_count == polls_before
+    assert mock_sleepme_client.set_temp_level.await_count == 1
+    assert mock_sleepme_client.set_device_status.await_count == 1
+
+
+async def test_failed_setpoint_rolls_the_optimistic_value_back(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    await _setup(hass)
+    server_value = hass.states.get(ENTITY_ID).attributes["temperature"]
+    mock_sleepme_client.set_temp_level.side_effect = SleepMeConnectionError("down")
+
+    with pytest.raises(HomeAssistantError):
+        await _set_temperature(hass, 26.0)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(ENTITY_ID).attributes["temperature"] == server_value
+
+
+async def test_failed_hvac_mode_rolls_the_optimistic_status_back(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    await _setup(hass)
+    mode_before = hass.states.get(ENTITY_ID).state
+    target = HVACMode.OFF if mode_before == HVACMode.AUTO else HVACMode.AUTO
+    mock_sleepme_client.set_device_status.side_effect = SleepMeConnectionError("down")
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_HVAC_MODE,
+            {ATTR_ENTITY_ID: ENTITY_ID, ATTR_HVAC_MODE: target},
+            blocking=True,
+        )
+    await hass.async_block_till_done()
+
+    assert hass.states.get(ENTITY_ID).state == mode_before
+
+
+async def test_optimistic_value_outlives_a_long_poll_interval(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """With no refresh after a command, a 300 s poll must not snap the UI back."""
+    from datetime import timedelta
+    from unittest.mock import patch as _patch
+
+    from homeassistant.util import dt as dt_util
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    coordinator.update_interval = timedelta(seconds=300)
+
+    await _set_temperature(hass, 25.0)
+
+    # 100 s later: past the old fixed 30 s window, before the next poll.
+    with _patch(
+        "custom_components.sleepme_thermostat.climate.dt_util.utcnow",
+        return_value=dt_util.utcnow() + timedelta(seconds=100),
+    ):
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert hass.states.get(ENTITY_ID).attributes["temperature"] == 25.0

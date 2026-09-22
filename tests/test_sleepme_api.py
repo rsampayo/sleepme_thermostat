@@ -209,7 +209,7 @@ async def test_get_or_create_returns_shared_instance(hass: HomeAssistant) -> Non
 
 # ---- Hypothesis property tests ---------------------------------------------
 
-from hypothesis import given  # noqa: E402
+from hypothesis import example, given  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 
@@ -219,6 +219,7 @@ from hypothesis import strategies as st  # noqa: E402
         max_size=64,
     )
 )
+@example(retry_after="-1")
 def test_compute_backoff_handles_arbitrary_retry_after(retry_after: str) -> None:
     """No printable-ASCII Retry-After string crashes _compute_backoff."""
     resp = httpx.Response(
@@ -238,3 +239,59 @@ def test_compute_backoff_no_retry_after_is_monotonic(attempt: int) -> None:
     prev = SleepMeAPI._compute_backoff(30, max(1, attempt - 1), resp)
     curr = SleepMeAPI._compute_backoff(30, attempt, resp)
     assert curr >= prev
+
+
+# ---------- commands wait for a slot; reads are refused ------------------------
+
+
+async def test_command_waits_for_a_slot_instead_of_raising(api: SleepMeAPI) -> None:
+    """A PATCH that finds the window full waits for the oldest entry to expire."""
+    base = time.monotonic() - 40.0  # a slot frees in about 20 s
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(base)
+
+    ok = MagicMock()
+    ok.raise_for_status = MagicMock()
+    ok.json = MagicMock(return_value={"ok": True})
+    api.client.request.return_value = ok
+
+    with patch(
+        "custom_components.sleepme_thermostat.sleepme_api.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        result = await api.api_request("PATCH", "devices/x", data={}, retries=0)
+
+    assert result == {"ok": True}
+    assert mock_sleep.await_count == 1
+    assert 19.0 <= mock_sleep.await_args_list[0].args[0] <= 20.0
+
+
+async def test_read_with_the_same_wait_is_still_refused(api: SleepMeAPI) -> None:
+    """A skipped poll costs nothing, so a GET does not queue."""
+    base = time.monotonic() - 40.0
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(base)
+
+    with pytest.raises(SleepMeRateLimited):
+        await api.api_request("GET", "devices/x", retries=0)
+
+
+async def test_command_beyond_the_maximum_wait_raises(api: SleepMeAPI) -> None:
+    base = time.monotonic() - 5.0  # a slot frees in about 55 s
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(base)
+
+    with pytest.raises(SleepMeRateLimited):
+        await api.api_request("PATCH", "devices/x", data={}, retries=0)
+
+
+def test_negative_retry_after_falls_back_to_computed_backoff() -> None:
+    """A negative header must never become an immediate retry."""
+    resp = httpx.Response(
+        429,
+        headers={"Retry-After": "-1"},
+        request=httpx.Request("GET", "https://x"),
+    )
+
+    assert SleepMeAPI._compute_backoff(30, 1, resp) == 30.0
+    assert SleepMeAPI._compute_backoff(30, 2, resp) == 60.0

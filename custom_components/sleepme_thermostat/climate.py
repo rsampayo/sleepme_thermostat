@@ -5,18 +5,23 @@ action, replacing the verify-after-command retry loop that historically caused
 the cascading 429 / multi-minute UI spinner problem.
 
 Behavior contract:
-- async_set_temperature / async_set_hvac_mode / async_set_preset_mode fire
-  exactly one PATCH. No verification loop, no fixed retries on top of the
-  transport layer's own backoff.
-- After a successful PATCH we write the expected new state locally
-  (`_optimistic_*` attributes) and trigger one coordinator refresh. The next
-  poll reconciles; while we wait, the entity surfaces the optimistic value.
+- A command costs exactly one request: the PATCH. No verification loop, no
+  refresh afterwards, no fixed retries on top of the transport layer's own
+  backoff. The per-account budget is nine requests a minute shared with every
+  poll, so a second request per click is what used to exhaust it.
+- The expected new state is written locally first (`_optimistic_*`
+  attributes), so the UI answers at once. The next regular poll reconciles. A
+  failed PATCH rolls the optimistic value back.
+- Rapid setpoint changes coalesce. Each call waits COMMAND_DEBOUNCE_SECONDS and
+  only the newest one sends, so four clicks on the up arrow are one PATCH
+  carrying the final value. A superseded call returns quietly.
 - Out-of-range temps raise ServiceValidationError (toast in HA UI).
 - Transport failures during PATCH raise HomeAssistantError (toast).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -59,9 +64,14 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # How long to trust our optimistic local state before falling back to whatever
-# the coordinator reports. One coordinator cycle is the natural reconciliation
-# window; we keep a small buffer for in-flight requests.
+# the coordinator reports. The next regular poll is what reconciles it, so the
+# window is never shorter than one poll interval plus a buffer for the request
+# in flight.
 OPTIMISTIC_WINDOW = timedelta(seconds=30)
+OPTIMISTIC_POLL_BUFFER = timedelta(seconds=10)
+
+# How long a setpoint change waits for a newer one before it is sent.
+COMMAND_DEBOUNCE_SECONDS = 1.5
 
 
 async def async_setup_entry(
@@ -121,6 +131,9 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
         # Last user-requested temperature, used to restore from a preset.
         self._previous_target_temperature: float | None = None
+
+        # Bumped by every setpoint request; only the newest one sends.
+        self._setpoint_request_id = 0
 
     # ---------- read properties -------------------------------------------------
 
@@ -201,25 +214,43 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         if target_temp not in PRESET_TEMPERATURES.values():
             target_temp = round_half_up(target_temp)
 
+        # Show the new value at once, then give a newer request the chance to
+        # replace this one before anything is sent.
+        self._setpoint_request_id += 1
+        request_id = self._setpoint_request_id
+        self._set_optimistic_target(target_temp)
+        self.async_write_ha_state()
+
+        await asyncio.sleep(COMMAND_DEBOUNCE_SECONDS)
+        if request_id != self._setpoint_request_id:
+            return
+
         _LOGGER.info(
             "[Device %s] Setting target temperature to %s°C",
             self._device_id,
             target_temp,
         )
 
-        await self._fire_patch(
-            self._client.set_temp_level(target_temp),
-            description=f"set_temperature={target_temp}",
-        )
+        try:
+            await self._fire_patch(
+                self._client.set_temp_level(target_temp),
+                description=f"set_temperature={target_temp}",
+            )
+        except HomeAssistantError:
+            if request_id == self._setpoint_request_id:
+                self._optimistic_target_temp = None
+                self._optimistic_target_temp_until = None
+                self.async_write_ha_state()
+            raise
 
         # Remember the explicit user request for preset → "None" restore.
         if target_temp not in PRESET_TEMPERATURES.values():
             self._previous_target_temperature = target_temp
 
-        self._optimistic_target_temp = target_temp
-        self._optimistic_target_temp_until = dt_util.utcnow() + OPTIMISTIC_WINDOW
-        self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        # Restart the window from the moment the device was actually told.
+        if request_id == self._setpoint_request_id:
+            self._set_optimistic_target(target_temp)
+            self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         if hvac_mode not in (HVACMode.AUTO, HVACMode.OFF):
@@ -227,15 +258,20 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
         target_status = "active" if hvac_mode == HVACMode.AUTO else "standby"
 
-        await self._fire_patch(
-            self._client.set_device_status(target_status),
-            description=f"set_status={target_status}",
-        )
-
         self._optimistic_status = target_status
-        self._optimistic_status_until = dt_util.utcnow() + OPTIMISTIC_WINDOW
+        self._optimistic_status_until = dt_util.utcnow() + self._optimistic_window()
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+
+        try:
+            await self._fire_patch(
+                self._client.set_device_status(target_status),
+                description=f"set_status={target_status}",
+            )
+        except HomeAssistantError:
+            self._optimistic_status = None
+            self._optimistic_status_until = None
+            self.async_write_ha_state()
+            raise
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Switching to a preset is implemented as setting the sentinel temp."""
@@ -261,6 +297,21 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
                 await self.async_set_temperature(temperature=restore)
 
     # ---------- internals -------------------------------------------------------
+
+    def _optimistic_window(self) -> timedelta:
+        """Return how long an optimistic value outlives the command.
+
+        No refresh follows a command, so the value has to survive until the
+        next regular poll, however long the configured interval is.
+        """
+        poll_interval = self.coordinator.update_interval or timedelta(0)
+        return max(OPTIMISTIC_WINDOW, poll_interval + OPTIMISTIC_POLL_BUFFER)
+
+    def _set_optimistic_target(self, target_temp: float) -> None:
+        self._optimistic_target_temp = target_temp
+        self._optimistic_target_temp_until = (
+            dt_util.utcnow() + self._optimistic_window()
+        )
 
     async def _fire_patch(self, coro: Awaitable[Any], *, description: str) -> None:
         """Run a PATCH coroutine, translating transport errors to HA errors.

@@ -6,9 +6,15 @@ Responsibilities:
 - Retry on 429 + 5xx with monotonically increasing backoff, honoring Retry-After.
 - Surface auth failures (401/403) and connection failures as typed exceptions.
 
+Local rate limiting treats reads and commands differently:
+- A read (GET) that finds the window full is refused with SleepMeRateLimited,
+  apart from a short edge grace. A skipped poll costs nothing; the coordinator
+  keeps its last data and polls again next interval.
+- A command (any other method) is a person or an automation asking for a
+  change, so it waits for the next free slot, up to COMMAND_MAX_WAIT, instead
+  of failing with an error toast.
+
 Does NOT:
-- Queue requests when the local rate limiter would block. Raises
-  SleepMeRateLimited; caller (coordinator, config flow, climate path) decides.
 - Manage its own httpx client lifecycle. The client is HA's shared instance,
   obtained via get_async_client(hass).
 
@@ -42,6 +48,9 @@ RATE_LIMIT_WINDOW = 60  # seconds
 # entity-flap when an install sits at the per-account ceiling (e.g. 3 devices
 # polling at 20s = 9 req/min exactly).
 RATE_LIMIT_EDGE_GRACE = 5.0  # seconds
+# How long a command may wait for a free slot. Polls are evenly spaced, so on
+# an account that polls below the ceiling a slot frees up within seconds.
+COMMAND_MAX_WAIT = 30.0  # seconds
 DEFAULT_RETRIES = 3
 BACKOFF_BASE_429 = 30  # seconds
 BACKOFF_BASE_5XX = 10  # seconds
@@ -196,43 +205,36 @@ class SleepMeAPI:
                 ) from err
 
     async def _enforce_local_rate_limit(self, method: str, endpoint: str) -> None:
-        """Record the request, briefly wait at the window edge, or raise.
+        """Record the request, wait for a slot, or raise.
 
         Sliding window: drop entries older than RATE_LIMIT_WINDOW, then check
-        capacity. If at capacity but the wait is small (<= RATE_LIMIT_EDGE_GRACE)
-        we sleep in-call — multi-device installs sitting at the per-account
-        ceiling routinely tip a few ms past the edge, and turning that into an
-        ERROR + UpdateFailed every cycle is the worst kind of log noise. Larger
-        waits still raise: caller decides.
+        capacity. At capacity, the request may wait for the oldest entry to
+        expire: a read for at most RATE_LIMIT_EDGE_GRACE, because multi-device
+        installs at the ceiling routinely tip a few ms past the edge, and a
+        command for at most COMMAND_MAX_WAIT, because refusing it would drop
+        what the user just asked for. A longer wait raises: caller decides.
+
+        The lock is released while waiting, so other callers are not held up
+        behind a waiting command.
         """
+        is_command = method.upper() != "GET"
+        max_wait = COMMAND_MAX_WAIT if is_command else RATE_LIMIT_EDGE_GRACE
+
         async with self._lock:
             now = time.monotonic()
-            while (
-                self._request_times
-                and now - self._request_times[0] >= RATE_LIMIT_WINDOW
-            ):
-                self._request_times.popleft()
-
+            self._drop_expired_requests(now)
             maxlen = self._request_times.maxlen
-            if maxlen is not None and len(self._request_times) >= maxlen:
-                wait = RATE_LIMIT_WINDOW - (now - self._request_times[0])
-                if wait <= RATE_LIMIT_EDGE_GRACE:
-                    _LOGGER.debug(
-                        "Local rate-limit edge on %s %s; waiting %.3fs in-call",
-                        method,
-                        endpoint,
-                        wait,
-                    )
-                    await asyncio.sleep(max(wait, 0.0))
-                    now = time.monotonic()
-                    while (
-                        self._request_times
-                        and now - self._request_times[0] >= RATE_LIMIT_WINDOW
-                    ):
-                        self._request_times.popleft()
-                    self._request_times.append(now)
-                    return
-                _LOGGER.warning(
+            if maxlen is None or len(self._request_times) < maxlen:
+                self._request_times.append(now)
+                return
+
+            wait = RATE_LIMIT_WINDOW - (now - self._request_times[0])
+            if wait > max_wait:
+                # A refused read is routine: the coordinator keeps its last
+                # data and says so if it has to give up. A refused command
+                # is worth a warning because the user's request is dropped.
+                _LOGGER.log(
+                    logging.WARNING if is_command else logging.DEBUG,
                     "Local rate limit hit on %s %s; would need %.1fs. Rejecting.",
                     method,
                     endpoint,
@@ -242,7 +244,22 @@ class SleepMeAPI:
                     f"{method} {endpoint}: local rate-limiter at capacity"
                 )
 
+        _LOGGER.debug(
+            "Local rate limit full on %s %s; waiting %.3fs for a slot",
+            method,
+            endpoint,
+            wait,
+        )
+        await asyncio.sleep(max(wait, 0.0))
+
+        async with self._lock:
+            now = time.monotonic()
+            self._drop_expired_requests(now)
             self._request_times.append(now)
+
+    def _drop_expired_requests(self, now: float) -> None:
+        while self._request_times and now - self._request_times[0] >= RATE_LIMIT_WINDOW:
+            self._request_times.popleft()
 
     async def _perform_request(
         self,
@@ -278,14 +295,25 @@ class SleepMeAPI:
                 )
             return min(v, float(BACKOFF_CEILING))
 
+        fallback = float(min(base * (2 ** (attempt - 1)), BACKOFF_CEILING))
         ra = response.headers.get("Retry-After")
-        if ra:
+        if not ra:
+            return fallback
+
+        try:
+            seconds = int(ra)
+        except ValueError:
             try:
-                return _cap(float(int(ra)))
-            except ValueError:
-                try:
-                    target = parsedate_to_datetime(ra).timestamp()
-                    return _cap(max(0.0, target - time.time()))
-                except (TypeError, ValueError):
-                    _LOGGER.debug("Unparsable Retry-After: %r", ra)
-        return float(min(base * (2 ** (attempt - 1)), BACKOFF_CEILING))
+                target = parsedate_to_datetime(ra).timestamp()
+            except (TypeError, ValueError):
+                _LOGGER.debug("Unparsable Retry-After: %r", ra)
+                return fallback
+            return _cap(max(0.0, target - time.time()))
+
+        if seconds < 0:
+            # Retry-After is a non-negative integer by definition. A negative
+            # one would mean retrying at once against a server that is asking
+            # us to slow down, so it is treated like a missing header.
+            _LOGGER.debug("Ignoring negative Retry-After: %r", ra)
+            return fallback
+        return _cap(float(seconds))
