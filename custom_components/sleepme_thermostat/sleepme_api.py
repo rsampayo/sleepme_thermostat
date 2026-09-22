@@ -230,7 +230,11 @@ class SleepMeAPI:
 
             wait = RATE_LIMIT_WINDOW - (now - self._request_times[0])
             if wait > max_wait:
-                _LOGGER.warning(
+                # A refused read is routine: the coordinator keeps its last
+                # data and says so if it has to give up. A refused command
+                # is worth a warning because the user's request is dropped.
+                _LOGGER.log(
+                    logging.WARNING if is_command else logging.DEBUG,
                     "Local rate limit hit on %s %s; would need %.1fs. Rejecting.",
                     method,
                     endpoint,
