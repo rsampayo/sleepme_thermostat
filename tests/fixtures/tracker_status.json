@@ -1,0 +1,20 @@
+{
+  "status": {
+    "is_connected": true,
+    "user_detected": true,
+    "environment_humidity": 47.5,
+    "environment_temperature_f": 70.7,
+    "environment_temperature_c": 21.5,
+    "bed_temperature_f": 82.4,
+    "bed_temperature_c": 28.0
+  },
+  "control": {},
+  "about": {
+    "firmware_version": "2.3.4-test",
+    "mac_address": "11:22:33:44:55:66",
+    "model": "ST501NA",
+    "serial_number": "TRACKER-TEST-SERIAL",
+    "ip_address": "203.0.113.10",
+    "lan_address": "192.0.2.10"
+  }
+}

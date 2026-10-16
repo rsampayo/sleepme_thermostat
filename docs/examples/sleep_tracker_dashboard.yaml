@@ -1,0 +1,70 @@
+# Stock Home Assistant dashboard cards for SleepMe Tracker data.
+# Replace every example entity_id with the IDs created in your installation.
+type: vertical-stack
+cards:
+  - type: entities
+    title: Last sleep
+    show_header_toggle: false
+    entities:
+      - entity: sensor.sleep_tracker_last_sleep_report
+      - entity: sensor.sleep_tracker_sleep_score
+      - entity: sensor.sleep_tracker_total_sleep_duration
+      - entity: sensor.sleep_tracker_sleep_efficiency
+      - entity: sensor.sleep_tracker_sleep_goal
+      - entity: sensor.sleep_tracker_sleep_debt
+      - entity: sensor.sleep_tracker_awakenings
+      - entity: sensor.sleep_tracker_longest_uninterrupted_sleep
+      - entity: sensor.sleep_tracker_sleep_midpoint
+
+  - type: horizontal-stack
+    cards:
+      - type: gauge
+        name: Efficiency
+        entity: sensor.sleep_tracker_sleep_efficiency
+        min: 0
+        max: 100
+        severity:
+          red: 0
+          yellow: 75
+          green: 85
+      - type: gauge
+        name: Sleep goal
+        entity: sensor.sleep_tracker_sleep_goal
+        min: 0
+        max: 120
+        severity:
+          red: 0
+          yellow: 75
+          green: 95
+
+  - type: entities
+    title: Sleep composition
+    show_header_toggle: false
+    entities:
+      - entity: sensor.sleep_tracker_awake_percentage
+      - entity: sensor.sleep_tracker_light_sleep_percentage
+      - entity: sensor.sleep_tracker_rem_sleep_percentage
+      - entity: sensor.sleep_tracker_deep_sleep_percentage
+      - entity: sensor.sleep_tracker_restorative_sleep_percentage
+
+  - type: entities
+    title: Trends
+    show_header_toggle: false
+    entities:
+      - entity: sensor.sleep_tracker_average_sleep_score_7_day
+      - entity: sensor.sleep_tracker_average_sleep_duration_7_day
+      - entity: sensor.sleep_tracker_average_sleep_efficiency_7_day
+      - entity: sensor.sleep_tracker_bedtime_consistency_7_day
+      - entity: sensor.sleep_tracker_wake_time_consistency_7_day
+      - entity: sensor.sleep_tracker_cumulative_sleep_debt_7_day
+      - entity: sensor.sleep_tracker_average_sleep_score_30_day
+      - entity: sensor.sleep_tracker_average_sleep_duration_30_day
+
+  - type: history-graph
+    title: Bed presence and environment
+    hours_to_show: 24
+    entities:
+      - entity: binary_sensor.sleep_tracker_user_detected
+      - entity: sensor.sleep_tracker_bed_temperature
+      - entity: sensor.sleep_tracker_environment_temperature
+      - entity: sensor.sleep_tracker_environment_humidity
