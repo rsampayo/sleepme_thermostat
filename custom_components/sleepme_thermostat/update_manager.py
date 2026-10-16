@@ -2,11 +2,15 @@
 
 Translates transport-layer typed exceptions into HA framework exceptions:
 - 401/403 (SleepMeAuthError) -> ConfigEntryAuthFailed (triggers reauth flow)
-- transient/rate-limit/connection -> UpdateFailed (HA backs off polling)
+- transient/connection -> UpdateFailed (HA backs off polling)
 
-No stale-data fallback: if a poll fails, HA's framework handles the entity
-availability semantics (CoordinatorEntity flips to unavailable until the next
-successful update).
+If a poll fails, HA's framework handles the entity availability semantics
+(CoordinatorEntity flips to unavailable until the next successful update).
+
+One exception: a poll refused by our own rate limiter is not a failure of the
+device or the API. The server was never asked. The coordinator keeps its last
+data for up to MAX_CONSECUTIVE_SKIPPED_POLLS intervals instead of flapping
+every entity to unavailable because a command used the last free slot.
 """
 
 from __future__ import annotations
@@ -36,6 +40,10 @@ from .sleepme_api import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Beyond this many skipped polls in a row the data is too old to present as
+# current, so the failure is surfaced.
+MAX_CONSECUTIVE_SKIPPED_POLLS = 2
 
 
 async def _async_fetch[T](coro: Awaitable[T]) -> T:
@@ -69,6 +77,7 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
     ) -> None:
         self.client = SleepMeClient(hass, api_url, token, device_id)
         self.device_id = device_id
+        self._consecutive_skipped_polls = 0
         super().__init__(
             hass,
             _LOGGER,
@@ -78,8 +87,29 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict:
         """Fetch the latest device status. Raise typed framework exceptions on failure."""
-        device_status = await _async_fetch(self.client.get_device_status())
+        try:
+            device_status = await _async_fetch(self.client.get_device_status())
+        except UpdateFailed as err:
+            # A poll refused by our own limiter is not an outage: the server
+            # was never asked. Keep the last data for a couple of intervals
+            # rather than flipping every entity to unavailable.
+            if not isinstance(err.__cause__, SleepMeRateLimited):
+                raise
+            if (
+                self.data is None
+                or self._consecutive_skipped_polls >= MAX_CONSECUTIVE_SKIPPED_POLLS
+            ):
+                raise
+            self._consecutive_skipped_polls += 1
+            _LOGGER.debug(
+                "[Device %s] Poll skipped by the local rate limiter (%d in a row); "
+                "keeping last data",
+                self.device_id,
+                self._consecutive_skipped_polls,
+            )
+            return self.data
 
+        self._consecutive_skipped_polls = 0
         return {
             "status": device_status.get("status", {}),
             "control": device_status.get("control", {}),

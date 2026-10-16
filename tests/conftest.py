@@ -98,3 +98,16 @@ def entity_registry_enabled_by_default() -> Generator[None]:
         return_value=True,
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def no_command_debounce() -> Generator[None]:
+    """Send setpoint changes without the real-time wait.
+
+    A zero-second sleep still yields to the event loop, so coalescing of
+    concurrent requests behaves exactly as it does in production.
+    """
+    with patch(
+        "custom_components.sleepme_thermostat.climate.COMMAND_DEBOUNCE_SECONDS", 0
+    ):
+        yield

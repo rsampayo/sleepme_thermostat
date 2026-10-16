@@ -402,3 +402,55 @@ async def test_summaries_are_derived_once_per_refresh_not_per_sensor(
     assert coordinator.latest_summary["date"] == date(2026, 7, 13)
     assert coordinator.latest_summary["total_sleep_duration"] == 420 * 60
     assert coordinator.history_summary["tracked_nights_7d"] == 7
+
+
+# ---------- a poll skipped by our own limiter is not an outage -----------------
+
+
+async def test_poll_skipped_by_local_limiter_keeps_entities_available(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """The server was never asked, so the last data stays in place."""
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+    data_before = coordinator.data
+    # The coordinator owns its own client instance, separate from the entry's.
+    poll = coordinator.client.get_device_status
+    polls_before = poll.await_count
+
+    poll.side_effect = SleepMeRateLimited("full")
+    await coordinator.async_refresh()
+
+    assert poll.await_count == polls_before + 1
+    assert coordinator.last_update_success is True
+    assert coordinator.data == data_before
+
+
+async def test_repeated_skipped_polls_eventually_surface_as_a_failure(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """Data older than two skipped intervals is not presented as current."""
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+    poll = coordinator.client.get_device_status
+
+    poll.side_effect = SleepMeRateLimited("full")
+    outcomes = []
+    for _ in range(3):
+        await coordinator.async_refresh()
+        outcomes.append(coordinator.last_update_success)
+    assert outcomes == [True, True, False]
+
+    # One good poll resets the allowance.
+    poll.side_effect = None
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success is True
+    poll.side_effect = SleepMeRateLimited("full")
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success is True

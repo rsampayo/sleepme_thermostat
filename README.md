@@ -149,7 +149,7 @@ All HA-supported frontend languages can load and use the integration. Entity and
 Tokens can be rotated or revoked in the sleep.me developer portal. When that happens, the integration triggers a reauth prompt on *Settings → Devices & Services*. Click *Reauthenticate*, paste a fresh token, done. No HA restart needed.
 
 **"Cannot connect to SleepMe API."**
-The sleep.me API is aggressively rate-limited. Transient failures are normal — the integration honors `Retry-After` and recovers on the next poll. If the entity stays unavailable for more than a few minutes, check the log under `custom_components.sleepme_thermostat`.
+The sleep.me API is aggressively rate-limited, per account, and every device and every command shares the same budget. The integration spends one request per command: rapid setpoint changes are coalesced into a single command carrying the last value, and a command that finds the budget full waits up to 30 seconds for a free slot instead of failing at once. If no slot frees up in that time the command is refused and Home Assistant shows an error. Transient failures are normal — the integration honors `Retry-After` and recovers on the next poll. If the entity stays unavailable for more than a few minutes, check the log under `custom_components.sleepme_thermostat`.
 
 **Polling too aggressive / not aggressive enough.**
 The default live-device poll interval is **30 seconds**. To change it: *Settings → Devices & Services → SleepMe → Configure*. Acceptable range 10–300 s. Lower values feel snappier but consume more of your per-minute API budget. Tracker sleep reports always use a separate 30-minute interval.
