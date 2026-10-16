@@ -55,3 +55,9 @@ MAX_SLEEP_TARGET_HOURS = 12.0
 # more than two requests of the shared per-account budget at a time.
 SLEEP_REPORT_HISTORY_DAYS = 30
 SLEEP_REPORT_BACKFILL_INTERVAL = 2 * 60
+
+# SleepMe finalizes a report about 15 minutes after the bed empties. When the
+# Tracker stops detecting the sleeper and does not see them again for this
+# long, the report coordinator refreshes once instead of waiting for its next
+# 30-minute tick. One extra request per bed exit that lasts.
+SLEEP_REPORT_BED_EXIT_REFRESH_DELAY = 20 * 60

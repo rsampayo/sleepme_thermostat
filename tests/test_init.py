@@ -178,7 +178,7 @@ async def test_only_headline_report_sensors_are_enabled_by_default(
     mock_sleepme_client: AsyncMock,
     tracker_status: dict,
 ) -> None:
-    """All 53 report sensors register, but only the headline set is enabled."""
+    """All 54 report sensors register, but only the headline set is enabled."""
     mock_sleepme_client.get_device_status.return_value = tracker_status
     device_id = "tracker-defaults"
     entry = MockConfigEntry(
@@ -220,8 +220,8 @@ async def test_only_headline_report_sensors_are_enabled_by_default(
         if registry_entry.disabled_by is not None
     ]
 
-    assert len(report_entries) == 53
-    assert enabled_keys == REPORT_SENSORS_ENABLED_BY_DEFAULT
+    assert len(report_entries) == 54
+    assert enabled_keys == REPORT_SENSORS_ENABLED_BY_DEFAULT | {"hypnogram"}
     assert len(disabled) == 41
     assert all(
         registry_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
@@ -575,3 +575,62 @@ async def test_tracker_setup_removes_dock_entities_left_by_older_versions(
         assert registry.async_get_entity_id(platform, DOMAIN, unique_id) is None
     assert registry.async_get(connected_id) is not None
     assert hass.states.get(connected_id).state == "on"
+
+
+async def test_hypnogram_sensor_carries_the_timeline_without_recording_it(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The chartable timeline is an attribute the recorder is told to skip."""
+    # The fixture reports are from July 2026; keep them inside the 30-day window.
+    freezer.move_to("2026-07-13 12:00:00+00:00")
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    device_id = "tracker-hypnogram"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_tracker_hypnogram",
+        version=5,
+        unique_id=device_id,
+        title="Sleep Tracker Chart",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": device_id,
+            "firmware_version": "2.3.4-test",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-TEST-SERIAL",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{DOMAIN}_{device_id}_sleep_report_hypnogram"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    # The main sleep of the latest completed report (2026-07-12) began at 23:00+02:00.
+    assert state.state == "2026-07-12T21:00:00+00:00"
+    assert state.attributes["report_date"] == "2026-07-12"
+    segments = state.attributes["segments"]
+    # Nap (3 segments) followed by the main sleep (4 segments), in clock order.
+    assert len(segments) == 7
+    assert segments[0] == {
+        "start": "2026-07-12T14:00:00+02:00",
+        "end": "2026-07-12T14:08:00+02:00",
+        "stage": "AWAKE",
+    }
+    assert segments[-1] == {
+        "start": "2026-07-13T04:00:00+02:00",
+        "end": "2026-07-13T07:00:00+02:00",
+        "stage": "DEEP_SLEEP",
+    }
+
+    from custom_components.sleepme_thermostat.sensor import SleepHypnogramSensor
+
+    assert "segments" in SleepHypnogramSensor._unrecorded_attributes

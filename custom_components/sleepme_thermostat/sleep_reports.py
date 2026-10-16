@@ -38,6 +38,50 @@ def latest_sleep_report(reports: list[dict[str, Any]]) -> dict[str, Any] | None:
     return max(candidates, key=lambda item: item[0])[1]
 
 
+def hypnogram_timeline(report: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Return every hypnogram segment of a report with absolute timestamps.
+
+    The API gives segment offsets in minutes from each session's bed entry.
+    Charts want wall-clock times, and a day with a nap and a main sleep wants
+    one timeline, so segments from every session are merged and sorted. Stage
+    names are passed through unchanged, NO_DATA included.
+    """
+    if report is None:
+        return []
+
+    timeline: list[tuple[datetime, datetime, str]] = []
+    for session in _sessions(report):
+        entered = _parse_datetime(session.get("enter_bed_time"))
+        hypnogram = session.get("hypnogram")
+        if entered is None or not isinstance(hypnogram, dict):
+            continue
+        raw_segments = hypnogram.get("segments")
+        if not isinstance(raw_segments, list):
+            continue
+        for segment in raw_segments:
+            if not isinstance(segment, dict) or not isinstance(
+                segment.get("stage"), str
+            ):
+                continue
+            start = _optional_number(segment.get("start"))
+            end = _optional_number(segment.get("end"))
+            if start is None or end is None or end < start:
+                continue
+            timeline.append(
+                (
+                    entered + timedelta(minutes=start),
+                    entered + timedelta(minutes=end),
+                    segment["stage"],
+                )
+            )
+
+    timeline.sort(key=lambda item: item[0])
+    return [
+        {"start": start.isoformat(), "end": end.isoformat(), "stage": stage}
+        for start, end, stage in timeline
+    ]
+
+
 def summarize_sleep_report(
     report: dict[str, Any] | None,
     *,

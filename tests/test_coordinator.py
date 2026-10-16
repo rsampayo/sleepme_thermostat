@@ -21,6 +21,8 @@ from custom_components.sleepme_thermostat.sleepme_api import (
     SleepMeRateLimited,
 )
 from custom_components.sleepme_thermostat.update_manager import (
+    BedExitReportRefresh,
+    SleepMeUpdateManager,
     SleepReportUpdateManager,
     _report_windows,
 )
@@ -28,7 +30,10 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryAuthFailed, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from tests.const import MOCK_API_TOKEN, MOCK_DEVICE_ID, MOCK_NAME
 
@@ -454,3 +459,133 @@ async def test_repeated_skipped_polls_eventually_surface_as_a_failure(
     poll.side_effect = SleepMeRateLimited("full")
     await coordinator.async_refresh()
     assert coordinator.last_update_success is True
+
+
+# ---------- a lasting bed exit refreshes the reports early ---------------------
+
+BED_EXIT_DELAY = timedelta(minutes=20)
+
+
+async def _tracker_pair(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock, tracker_status: dict
+) -> tuple[SleepMeUpdateManager, SleepReportUpdateManager, BedExitReportRefresh]:
+    tracker_status["status"]["user_detected"] = True
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    live = SleepMeUpdateManager(hass, API_URL, MOCK_API_TOKEN, "tracker", 30)
+    await live.async_refresh()
+    reports = _report_coordinator(hass)
+    await reports.async_refresh()
+    refresher = BedExitReportRefresh(hass, live, reports, delay=BED_EXIT_DELAY)
+    return live, reports, refresher
+
+
+async def _set_in_bed(
+    live: SleepMeUpdateManager, tracker_status: dict, in_bed: bool
+) -> None:
+    tracker_status["status"]["user_detected"] = in_bed
+    await live.async_refresh()
+
+
+async def test_lasting_bed_exit_refreshes_reports_once_after_the_delay(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Out of bed and still out 20 minutes later: one report request."""
+    freezer.move_to("2026-07-13 07:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+    before = mock_sleepme_client.get_sleep_reports.await_count
+
+    await _set_in_bed(live, tracker_status, False)
+    assert refresher.pending is True
+    # Still out of bed on later polls: no second timer, no early request.
+    await live.async_refresh()
+    assert mock_sleepme_client.get_sleep_reports.await_count == before
+
+    freezer.tick(BED_EXIT_DELAY + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert refresher.pending is False
+    assert mock_sleepme_client.get_sleep_reports.await_count > before
+    stop()
+    # Let the coordinator's request debouncer finish its cooldown.
+    freezer.tick(timedelta(seconds=11))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+
+async def test_short_bed_exit_costs_no_request(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Back in bed before the delay elapses: the refresh is cancelled."""
+    freezer.move_to("2026-07-13 03:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+    before = mock_sleepme_client.get_sleep_reports.await_count
+
+    await _set_in_bed(live, tracker_status, False)
+    freezer.tick(timedelta(minutes=5))
+    await _set_in_bed(live, tracker_status, True)
+    assert refresher.pending is False
+
+    freezer.tick(BED_EXIT_DELAY)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert mock_sleepme_client.get_sleep_reports.await_count == before
+    stop()
+
+
+async def test_stopping_the_watcher_cancels_a_pending_refresh(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Unloading the entry must not leave a timer that fires into nothing."""
+    freezer.move_to("2026-07-13 07:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+    before = mock_sleepme_client.get_sleep_reports.await_count
+
+    await _set_in_bed(live, tracker_status, False)
+    assert refresher.pending is True
+    stop()
+    assert refresher.pending is False
+
+    freezer.tick(BED_EXIT_DELAY + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    # The listener is gone too: later transitions schedule nothing.
+    await _set_in_bed(live, tracker_status, True)
+    await _set_in_bed(live, tracker_status, False)
+    assert refresher.pending is False
+    assert mock_sleepme_client.get_sleep_reports.await_count == before
+
+
+async def test_unknown_occupancy_never_schedules_a_refresh(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """A payload without user_detected is not a bed exit."""
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+    del tracker_status["status"]["user_detected"]
+    await live.async_refresh()
+    assert refresher.pending is False
+    stop()

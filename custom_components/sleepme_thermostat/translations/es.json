@@ -61,6 +61,7 @@
       "deep_sleep_duration": { "name": "Duración del sueño profundo" },
       "sleep_latency": { "name": "Latencia del sueño" },
       "hypnogram_segment_count": { "name": "Segmentos del hipnograma" },
+      "hypnogram": { "name": "Hipnograma" },
       "sleep_efficiency_percent": { "name": "Eficiencia del sueño" },
       "wake_after_sleep_onset": { "name": "Vigilia tras el inicio del sueño" },
       "restorative_sleep_duration": { "name": "Duración del sueño reparador" },

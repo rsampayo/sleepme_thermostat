@@ -61,6 +61,7 @@
       "deep_sleep_duration": { "name": "Mélyalvás időtartama" },
       "sleep_latency": { "name": "Elalvási idő" },
       "hypnogram_segment_count": { "name": "Hipnogramszakaszok száma" },
+      "hypnogram": { "name": "Hipnogram" },
       "sleep_efficiency_percent": { "name": "Alváshatékonyság" },
       "wake_after_sleep_onset": { "name": "Elalvás utáni ébrenlét" },
       "restorative_sleep_duration": { "name": "Regeneráló alvás időtartama" },

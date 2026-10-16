@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 import pytest
 from custom_components.sleepme_thermostat.sleep_reports import (
+    hypnogram_timeline,
     latest_sleep_report,
     summarize_sleep_history,
     summarize_sleep_report,
@@ -331,3 +332,56 @@ def test_history_windows_end_today_not_at_the_newest_report() -> None:
     assert ten_days_later["average_total_sleep_duration_7d"] is None
     assert ten_days_later["tracked_nights_30d"] == 2
     assert ten_days_later["average_total_sleep_duration_30d"] == 450 * 60
+
+
+def test_hypnogram_timeline_merges_sessions_into_clock_time(
+    sleep_reports: list[dict],
+) -> None:
+    """Minute offsets become wall-clock timestamps; sessions sort together."""
+    report = latest_sleep_report(sleep_reports)
+    timeline = hypnogram_timeline(report)
+
+    assert [segment["stage"] for segment in timeline] == [
+        "AWAKE",
+        "LIGHT_SLEEP",
+        "DEEP_SLEEP",
+        "AWAKE",
+        "LIGHT_SLEEP",
+        "REM_SLEEP",
+        "DEEP_SLEEP",
+    ]
+    assert timeline[3]["start"] == "2026-07-12T23:00:00+02:00"
+    assert timeline[3]["end"] == "2026-07-12T23:15:00+02:00"
+    # Each segment ends where the next one starts within a session.
+    assert timeline[4]["start"] == timeline[3]["end"]
+
+
+def test_hypnogram_timeline_skips_what_it_cannot_place() -> None:
+    """No bed-entry time, no hypnogram, or a backwards segment: left out."""
+    report = {
+        "date": "2026-07-12",
+        "sessions": [
+            {"hypnogram": {"segments": [{"start": 0, "end": 5, "stage": "AWAKE"}]}},
+            {"enter_bed_time": "2026-07-12T22:00:00+00:00", "hypnogram": None},
+            {
+                "enter_bed_time": "2026-07-12T22:00:00+00:00",
+                "hypnogram": {
+                    "segments": [
+                        {"start": 10, "end": 5, "stage": "AWAKE"},
+                        {"start": 0, "end": None, "stage": "AWAKE"},
+                        {"start": 0, "end": 10, "stage": None},
+                        "garbage",
+                        {"start": 0, "end": 10, "stage": "NO_DATA"},
+                    ]
+                },
+            },
+        ],
+    }
+    assert hypnogram_timeline(report) == [
+        {
+            "start": "2026-07-12T22:00:00+00:00",
+            "end": "2026-07-12T22:10:00+00:00",
+            "stage": "NO_DATA",
+        }
+    ]
+    assert hypnogram_timeline(None) == []

@@ -64,6 +64,9 @@ async def async_setup_entry(
                     data.report_coordinator, device_id, device_info
                 )
             )
+            entities.append(
+                SleepHypnogramSensor(data.report_coordinator, device_id, device_info)
+            )
     else:
         entities.extend(
             [
@@ -422,6 +425,46 @@ class SleepReportSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntit
         if self._scope == "history":
             return self.coordinator.history_summary.get(self._key)
         return self.coordinator.latest_summary.get(self._key)
+
+
+class SleepHypnogramSensor(CoordinatorEntity[SleepReportUpdateManager], SensorEntity):
+    """The latest report's stage timeline, for charting.
+
+    The state is when the main sleep began. The segments ride along as an
+    attribute the recorder is told not to store, so the night's health payload
+    is never copied into the database on every refresh. A chart card reads the
+    attribute live.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "hypnogram"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _unrecorded_attributes = frozenset({"segments"})
+
+    def __init__(
+        self,
+        coordinator: SleepReportUpdateManager,
+        device_id: str,
+        device_info: DeviceInfo,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{device_id}_sleep_report_hypnogram"
+        self._attr_device_info = device_info
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the main sleep session began."""
+        value = self.coordinator.latest_summary.get("main_enter_bed_time")
+        return value if isinstance(value, datetime) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the timeline: start, end and stage for every segment."""
+        report_date = self.coordinator.latest_summary.get("date")
+        return {
+            "report_date": report_date.isoformat() if report_date else None,
+            "segments": self.coordinator.latest_hypnogram,
+        }
 
 
 # Report sensors enabled out of the box: the headline numbers, and every sensor

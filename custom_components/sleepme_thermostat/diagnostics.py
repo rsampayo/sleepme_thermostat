@@ -69,6 +69,11 @@ async def async_get_config_entry_diagnostics(
                 "pending_backfill_windows": (
                     report_coordinator.pending_backfill_windows
                 ),
+                "bed_exit_refresh_pending": (
+                    data.bed_exit_refresh.pending
+                    if data.bed_exit_refresh is not None
+                    else None
+                ),
             }
 
     return {

@@ -41,7 +41,8 @@
 - Configurable sleep goal with nightly goal percentage, sleep debt, and cumulative 7/30-day debt.
 - Seven- and thirty-day averages plus bedtime/wake-time variation. The windows end today, so an unused tracker reads as no data rather than as an old week.
 - A response-only `sleepme_thermostat.get_sleep_reports` action returns the lossless raw reports, including session IDs and every hypnogram segment, without storing that large health payload in Home Assistant's recorder.
-- Sleep reports cover 30 days. Only the newest week is refreshed, once every 30 minutes with a single request, to protect the API request budget. Older weeks are fetched once after startup and cached.
+- Sleep reports cover 30 days. Only the newest week is refreshed, once every 30 minutes with a single request, to protect the API request budget. Older weeks are fetched once after startup and cached. When the Tracker sees the bed empty and still empty 20 minutes later, the reports are refreshed once right away, so the morning's report lands when the night ends instead of up to 45 minutes later.
+- A Hypnogram sensor carries last night's stage timeline (start, end and stage of every segment, in clock time) as an attribute that the recorder is told not to store, so a chart card can draw the night without the health payload being written to the database every refresh.
 
 See [Sleep Tracker features, formulas, and limitations](docs/sleep-tracker.md) for the exact direct-versus-derived boundary. In particular, the public API does not currently expose biometrics or live sleep stages, so HA cannot reproduce those consumer-app features honestly.
 
@@ -107,6 +108,7 @@ To tune the polling cadence: *Settings → Devices & Services → SleepMe → Co
 | sensor | Awake / Light / REM / Deep Sleep Duration | Daily stage totals in seconds |
 | sensor | Sleep Latency | Sum across the day's sessions, in seconds |
 | sensor | Hypnogram Segments | Total raw segment count |
+| sensor | Hypnogram | Main sleep start as state; `segments` attribute holds the clock-time stage timeline (not recorded) |
 | sensor | Sleep Efficiency / Wake After Sleep Onset | Derived from public duration fields |
 | sensor | Awake / Light / REM / Deep / Restorative Percentage | Derived daily composition |
 | sensor | Restorative Sleep / Longest Uninterrupted Sleep | Derived durations |
@@ -133,13 +135,13 @@ data:
 response_variable: sleepme_data
 ```
 
-The raw API expresses report durations and hypnogram offsets in minutes. Sensor entities normalize them to seconds for Home Assistant's duration device class; the response-only action deliberately preserves the raw minute values. Normal sensors intentionally keep hypnogram arrays out of state attributes so Home Assistant's recorder does not duplicate a large health-data payload every refresh. Sleepme's consumer app documents heart rate, HRV, and respiration, but the current public `/sleep-reports` response does not expose those fields; this integration cannot create values that the public API does not return.
+The raw API expresses report durations and hypnogram offsets in minutes. Sensor entities normalize them to seconds for Home Assistant's duration device class; the response-only action deliberately preserves the raw minute values. Only the Hypnogram sensor carries the stage timeline, and it marks that attribute as not recorded, so Home Assistant's recorder never duplicates the health-data payload; the other sensors stay scalar. Sleepme's consumer app documents heart rate, HRV, and respiration, but the current public `/sleep-reports` response does not expose those fields; this integration cannot create values that the public API does not return.
 
 ## Automations
 
 Bed occupancy and the report sensors are ordinary Home Assistant entities, so presence routines, warm-awake schedules and report alerts can be built with standard automations. Ready-made blueprints are being prepared separately and are not part of this release.
 
-Such automations are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml).
+Such automations are deterministic HA rules, not a clone of Sleepme's proprietary Hiber-AI model. A stock-card dashboard example is available at [docs/examples/sleep_tracker_dashboard.yaml](docs/examples/sleep_tracker_dashboard.yaml), and [docs/examples/sleep_tracker_hypnogram.yaml](docs/examples/sleep_tracker_hypnogram.yaml) draws last night's hypnogram with the community ApexCharts card.
 
 All HA-supported frontend languages can load and use the integration. Entity and option text uses HA's translation system; Spanish and complete native Hungarian translations are included, while every remaining locale receives HA's built-in English fallback instead of broken or missing labels.
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import cast
 
 import httpx
@@ -41,12 +41,17 @@ from .const import (
     DOMAIN,
     MAX_SLEEP_REPORT_DAYS_BACK,
     SERVICE_GET_SLEEP_REPORTS,
+    SLEEP_REPORT_BED_EXIT_REFRESH_DELAY,
     SLEEP_REPORT_HISTORY_DAYS,
 )
 from .helpers import is_sleep_tracker
 from .sleepme import SleepMeClient
 from .sleepme_api import SleepMeAPIError
-from .update_manager import SleepMeUpdateManager, SleepReportUpdateManager
+from .update_manager import (
+    BedExitReportRefresh,
+    SleepMeUpdateManager,
+    SleepReportUpdateManager,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,6 +102,8 @@ class SleepMeData:
     # Raw fields from entry.data; helpers.build_device_info() maps them into
     # HA's DeviceInfo TypedDict shape at platform-setup time.
     device_info: dict
+    # Trackers only: refreshes reports shortly after the bed empties.
+    bed_exit_refresh: BedExitReportRefresh | None = None
 
 
 # Typed alias for downstream platforms to use as the ConfigEntry parameter type.
@@ -210,11 +217,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
     if is_sleep_tracker(model):
         _remove_dock_only_entities(hass, device_id)
 
+    bed_exit_refresh: BedExitReportRefresh | None = None
+    if report_coordinator is not None:
+        bed_exit_refresh = BedExitReportRefresh(
+            hass,
+            coordinator,
+            report_coordinator,
+            delay=timedelta(seconds=SLEEP_REPORT_BED_EXIT_REFRESH_DELAY),
+        )
+        entry.async_on_unload(bed_exit_refresh.start())
+
     entry.runtime_data = SleepMeData(
         client=client,
         coordinator=coordinator,
         report_coordinator=report_coordinator,
         model=model,
+        bed_exit_refresh=bed_exit_refresh,
         device_info={
             "firmware_version": entry.data.get("firmware_version"),
             "mac_address": entry.data.get("mac_address"),

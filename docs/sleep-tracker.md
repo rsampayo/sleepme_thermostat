@@ -29,6 +29,7 @@ The public report payload uses minutes for durations and hypnogram offsets. The 
 | 7/30-day averages | Mean across completed reports in each calendar window | HA-derived |
 | Bedtime / wake time variation | Mean circular clock-time deviation, in minutes | HA-derived; lower is more consistent |
 | 7/30-day sleep debt over tracked nights | Sum of nightly debt across tracked nights only; untracked nights add nothing | HA-derived |
+| Hypnogram | Every segment of the latest report's sessions, offsets converted to clock time, as a `segments` attribute | Direct; attribute excluded from the recorder |
 
 The personal sleep target is configured under *Settings → Devices & Services → SleepMe → Configure*. It defaults to eight hours and affects only HA-derived goal/debt sensors; it is not presented as medical guidance or a Sleepme recommendation.
 
@@ -53,7 +54,7 @@ The personal sleep target is configured under *Settings → Devices & Services �
 ## Known limitations
 
 - Sleep reports belong to the Sleepme account, not to a device. The API gives no way to tell which tracker recorded a session, so two trackers on one account would show the same reports.
-- Report sensors describe finalized sessions. Sleepme finalizes a report about 15 minutes after the sleeper leaves the bed.
+- Report sensors describe finalized sessions. Sleepme finalizes a report about 15 minutes after the sleeper leaves the bed. Reports refresh every 30 minutes, and once more 20 minutes after the Tracker sees the bed empty and stay empty, so the morning report normally arrives within half an hour of getting up.
 - While the tracker is offline, its live sensors and Bed Occupancy are unavailable. The API keeps returning the last known values, and those are not shown as current.
 
 ## Blueprints
@@ -62,7 +63,7 @@ Ready-made automation blueprints for the routines above are being prepared separ
 
 ## Privacy and Recorder behavior
 
-Normal entities expose only scalar values. Raw hypnogram arrays and session IDs are never added as state attributes or diagnostics, preventing Recorder from copying the full health payload every refresh. Use the response-only `sleepme_thermostat.get_sleep_reports` action for an explicit lossless fetch when needed.
+Entities expose scalar values, with one exception: the Hypnogram sensor carries the latest report's stage timeline as a `segments` attribute and declares that attribute unrecorded, so a chart card can read it live while the Recorder never stores it. Session IDs are never added as state attributes or diagnostics. Use the response-only `sleepme_thermostat.get_sleep_reports` action for an explicit lossless fetch when needed.
 
 ## Language behavior
 

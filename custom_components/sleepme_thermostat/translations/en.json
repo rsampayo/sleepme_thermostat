@@ -61,6 +61,7 @@
       "deep_sleep_duration": { "name": "Deep Sleep Duration" },
       "sleep_latency": { "name": "Sleep Latency" },
       "hypnogram_segment_count": { "name": "Hypnogram Segments" },
+      "hypnogram": { "name": "Hypnogram" },
       "sleep_efficiency_percent": { "name": "Sleep Efficiency" },
       "wake_after_sleep_onset": { "name": "Wake After Sleep Onset" },
       "restorative_sleep_duration": { "name": "Restorative Sleep Duration" },

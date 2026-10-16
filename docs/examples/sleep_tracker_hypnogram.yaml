@@ -1,0 +1,40 @@
+# Last night's hypnogram, drawn from the Hypnogram sensor's `segments` attribute.
+# Needs the community ApexCharts card (https://github.com/RomRider/apexcharts-card,
+# installable through HACS). Replace the entity_id with the one in your installation.
+# The card shows the last 24 hours, which covers last night when viewed during the day.
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Last night
+graph_span: 24h
+apex_config:
+  chart:
+    height: 220
+  yaxis:
+    min: 0
+    max: 4
+    tickAmount: 4
+    labels:
+      formatter: |
+        EVAL:function (value) { return ['', 'Deep', 'Light', 'REM', 'Awake'][value] || ''; }
+  tooltip:
+    y:
+      formatter: |
+        EVAL:function (value) { return ['', 'Deep', 'Light', 'REM', 'Awake'][value] || 'No data'; }
+series:
+  - entity: sensor.sleep_tracker_hypnogram
+    name: Stage
+    curve: stepline
+    stroke_width: 2
+    extend_to: false
+    show:
+      in_header: false
+    data_generator: |
+      const level = { DEEP_SLEEP: 1, LIGHT_SLEEP: 2, REM_SLEEP: 3, AWAKE: 4 };
+      const points = [];
+      for (const segment of entity.attributes.segments || []) {
+        const value = level[segment.stage] ?? null;
+        points.push([new Date(segment.start).getTime(), value]);
+        points.push([new Date(segment.end).getTime() - 1, value]);
+      }
+      return points;

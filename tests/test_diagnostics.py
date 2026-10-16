@@ -133,6 +133,7 @@ async def test_tracker_diagnostics_never_include_health_payload(
         "last_exception": None,
         "report_count": 3,
         "pending_backfill_windows": 3,
+        "bed_exit_refresh_pending": False,
     }
     assert "sessions" not in str(diag["report_coordinator"])
     assert "hypnogram" not in str(diag["report_coordinator"])
