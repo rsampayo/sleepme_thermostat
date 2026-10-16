@@ -134,6 +134,9 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
         # Bumped by every setpoint request; only the newest one sends.
         self._setpoint_request_id = 0
+        # Bumped by every mode request, so an older call that fails late
+        # cannot roll back a newer call's optimistic state.
+        self._status_request_id = 0
 
     # ---------- read properties -------------------------------------------------
 
@@ -258,8 +261,9 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
 
         target_status = "active" if hvac_mode == HVACMode.AUTO else "standby"
 
-        self._optimistic_status = target_status
-        self._optimistic_status_until = dt_util.utcnow() + self._optimistic_window()
+        self._status_request_id += 1
+        request_id = self._status_request_id
+        self._set_optimistic_status(target_status)
         self.async_write_ha_state()
 
         try:
@@ -268,10 +272,17 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
                 description=f"set_status={target_status}",
             )
         except HomeAssistantError:
-            self._optimistic_status = None
-            self._optimistic_status_until = None
-            self.async_write_ha_state()
+            if request_id == self._status_request_id:
+                self._optimistic_status = None
+                self._optimistic_status_until = None
+                self.async_write_ha_state()
             raise
+
+        # The PATCH may have waited for a rate-limit slot. Restart the window
+        # from the moment the device was actually told.
+        if request_id == self._status_request_id:
+            self._set_optimistic_status(target_status)
+            self.async_write_ha_state()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Switching to a preset is implemented as setting the sentinel temp."""
@@ -306,6 +317,10 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         """
         poll_interval = self.coordinator.update_interval or timedelta(0)
         return max(OPTIMISTIC_WINDOW, poll_interval + OPTIMISTIC_POLL_BUFFER)
+
+    def _set_optimistic_status(self, target_status: str) -> None:
+        self._optimistic_status = target_status
+        self._optimistic_status_until = dt_util.utcnow() + self._optimistic_window()
 
     def _set_optimistic_target(self, target_temp: float) -> None:
         self._optimistic_target_temp = target_temp

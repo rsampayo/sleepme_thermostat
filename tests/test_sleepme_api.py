@@ -10,7 +10,6 @@ import pytest
 from custom_components.sleepme_thermostat.sleepme_api import (
     BACKOFF_BASE_429,
     MAX_REQUESTS_PER_MINUTE,
-    RATE_LIMIT_EDGE_GRACE,
     RATE_LIMIT_WINDOW,
     SleepMeAPI,
     SleepMeAuthError,
@@ -26,6 +25,49 @@ def api(hass: HomeAssistant) -> SleepMeAPI:
     inst.client = MagicMock()
     inst.client.request = AsyncMock()
     return inst
+
+
+class _ScriptedClock:
+    """Deterministic clock for the limiter: sleeping advances time.
+
+    The limiter reads the clock more than once, so tests script every read
+    through this object instead of mocking sleep alone. `hooks` run after each
+    sleep, which lets a test act as another caller taking a slot meanwhile.
+    """
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.now = start
+        self.slept: list[float] = []
+        self.hooks: list = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        self.slept.append(round(seconds, 3))
+        self.now += seconds
+        if self.hooks:
+            self.hooks.pop(0)()
+
+
+def _scripted(clock: _ScriptedClock):
+    return (
+        patch(
+            "custom_components.sleepme_thermostat.sleepme_api.time.monotonic",
+            clock.monotonic,
+        ),
+        patch(
+            "custom_components.sleepme_thermostat.sleepme_api.asyncio.sleep",
+            clock.sleep,
+        ),
+    )
+
+
+def _ok_response() -> MagicMock:
+    ok = MagicMock()
+    ok.raise_for_status = MagicMock()
+    ok.json = MagicMock(return_value={"ok": True})
+    return ok
 
 
 def _http_response(status: int, headers: dict | None = None) -> httpx.Response:
@@ -126,27 +168,17 @@ async def test_window_edge_waits_briefly_instead_of_raising(
     9 req/min sits exactly at the per-account ceiling, so the next call lands
     a few ms past the window edge. v4.1.1 absorbs that in-call.
     """
+    clock = _ScriptedClock()
     # Oldest entry is 59s old -> wait would be ~1s, within the 5s grace.
-    edge_age = RATE_LIMIT_WINDOW - 1.0
-    base = time.monotonic() - edge_age
     for _ in range(MAX_REQUESTS_PER_MINUTE):
-        api._request_times.append(base)
+        api._request_times.append(clock.now - (RATE_LIMIT_WINDOW - 1.0))
+    api.client.request.return_value = _ok_response()
 
-    final_ok = MagicMock()
-    final_ok.raise_for_status = MagicMock()
-    final_ok.json = MagicMock(return_value={"ok": True})
-    api.client.request.return_value = final_ok
-
-    with patch(
-        "custom_components.sleepme_thermostat.sleepme_api.asyncio.sleep",
-        new_callable=AsyncMock,
-    ) as mock_sleep:
+    with _scripted(clock)[0], _scripted(clock)[1]:
         result = await api.api_request("GET", "devices", retries=0)
 
     assert result == {"ok": True}
-    assert mock_sleep.await_count == 1
-    waited = mock_sleep.await_args_list[0].args[0]
-    assert 0.0 <= waited <= RATE_LIMIT_EDGE_GRACE
+    assert clock.slept == [1.0]
 
 
 async def test_wait_above_grace_still_raises(api: SleepMeAPI) -> None:
@@ -246,43 +278,42 @@ def test_compute_backoff_no_retry_after_is_monotonic(attempt: int) -> None:
 
 async def test_command_waits_for_a_slot_instead_of_raising(api: SleepMeAPI) -> None:
     """A PATCH that finds the window full waits for the oldest entry to expire."""
-    base = time.monotonic() - 40.0  # a slot frees in about 20 s
+    clock = _ScriptedClock()
     for _ in range(MAX_REQUESTS_PER_MINUTE):
-        api._request_times.append(base)
+        api._request_times.append(clock.now - 40.0)  # a slot frees in 20 s
+    api.client.request.return_value = _ok_response()
 
-    ok = MagicMock()
-    ok.raise_for_status = MagicMock()
-    ok.json = MagicMock(return_value={"ok": True})
-    api.client.request.return_value = ok
-
-    with patch(
-        "custom_components.sleepme_thermostat.sleepme_api.asyncio.sleep",
-        new_callable=AsyncMock,
-    ) as mock_sleep:
+    with _scripted(clock)[0], _scripted(clock)[1]:
         result = await api.api_request("PATCH", "devices/x", data={}, retries=0)
 
     assert result == {"ok": True}
-    assert mock_sleep.await_count == 1
-    assert 19.0 <= mock_sleep.await_args_list[0].args[0] <= 20.0
+    assert clock.slept == [20.0]
+    assert len(api._request_times) == 1
 
 
 async def test_read_with_the_same_wait_is_still_refused(api: SleepMeAPI) -> None:
     """A skipped poll costs nothing, so a GET does not queue."""
-    base = time.monotonic() - 40.0
+    clock = _ScriptedClock()
     for _ in range(MAX_REQUESTS_PER_MINUTE):
-        api._request_times.append(base)
+        api._request_times.append(clock.now - 40.0)
 
-    with pytest.raises(SleepMeRateLimited):
-        await api.api_request("GET", "devices/x", retries=0)
+    with _scripted(clock)[0], _scripted(clock)[1]:
+        with pytest.raises(SleepMeRateLimited):
+            await api.api_request("GET", "devices/x", retries=0)
+
+    assert clock.slept == []
 
 
 async def test_command_beyond_the_maximum_wait_raises(api: SleepMeAPI) -> None:
-    base = time.monotonic() - 5.0  # a slot frees in about 55 s
+    clock = _ScriptedClock()
     for _ in range(MAX_REQUESTS_PER_MINUTE):
-        api._request_times.append(base)
+        api._request_times.append(clock.now - 5.0)  # a slot frees in 55 s
 
-    with pytest.raises(SleepMeRateLimited):
-        await api.api_request("PATCH", "devices/x", data={}, retries=0)
+    with _scripted(clock)[0], _scripted(clock)[1]:
+        with pytest.raises(SleepMeRateLimited):
+            await api.api_request("PATCH", "devices/x", data={}, retries=0)
+
+    assert clock.slept == []
 
 
 def test_negative_retry_after_falls_back_to_computed_backoff() -> None:
@@ -295,3 +326,60 @@ def test_negative_retry_after_falls_back_to_computed_backoff() -> None:
 
     assert SleepMeAPI._compute_backoff(30, 1, resp) == 30.0
     assert SleepMeAPI._compute_backoff(30, 2, resp) == 60.0
+
+
+async def test_waiter_rechecks_capacity_when_another_caller_took_the_slot(
+    api: SleepMeAPI,
+) -> None:
+    """Sleeping outside the lock owns nothing: re-check, then wait again.
+
+    While the command sleeps, nine other requests fill the window. The
+    command must not append blindly (the bounded deque would silently drop
+    an entry and the account budget would be exceeded). It re-checks, finds
+    one slot opening before its deadline, waits for that, and then sends.
+    """
+    clock = _ScriptedClock()
+    start = clock.now
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(start - 40.0)  # all expire at start + 20
+
+    def other_callers_fill_the_window() -> None:
+        api._request_times.clear()
+        api._request_times.append(start - 33.0)  # expires at start + 27
+        for _ in range(MAX_REQUESTS_PER_MINUTE - 1):
+            api._request_times.append(clock.now)  # start + 20
+
+    clock.hooks = [other_callers_fill_the_window]
+    api.client.request.return_value = _ok_response()
+
+    with _scripted(clock)[0], _scripted(clock)[1]:
+        result = await api.api_request("PATCH", "devices/x", data={}, retries=0)
+
+    assert result == {"ok": True}
+    assert clock.slept == [20.0, 7.0]
+    assert len(api._request_times) == MAX_REQUESTS_PER_MINUTE
+
+
+async def test_waiter_gives_up_at_its_deadline_after_a_recheck(
+    api: SleepMeAPI,
+) -> None:
+    """The deadline is fixed when the command arrives; re-checks do not extend it."""
+    clock = _ScriptedClock()
+    start = clock.now
+    for _ in range(MAX_REQUESTS_PER_MINUTE):
+        api._request_times.append(start - 40.0)
+
+    def other_callers_fill_the_window() -> None:
+        api._request_times.clear()
+        for _ in range(MAX_REQUESTS_PER_MINUTE):
+            api._request_times.append(clock.now)  # next slot at start + 80
+
+    clock.hooks = [other_callers_fill_the_window]
+
+    with _scripted(clock)[0], _scripted(clock)[1]:
+        with pytest.raises(SleepMeRateLimited):
+            await api.api_request("PATCH", "devices/x", data={}, retries=0)
+
+    assert clock.slept == [20.0]
+    assert len(api._request_times) == MAX_REQUESTS_PER_MINUTE
+    api.client.request.assert_not_called()

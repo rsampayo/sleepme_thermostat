@@ -610,3 +610,87 @@ async def test_optimistic_value_outlives_a_long_poll_interval(
         coordinator.async_update_listeners()
         await hass.async_block_till_done()
         assert hass.states.get(ENTITY_ID).attributes["temperature"] == 25.0
+
+
+async def test_older_failed_mode_call_does_not_roll_back_a_newer_one(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """Service calls run concurrently; only the newest request may clean up."""
+    import asyncio
+
+    await _setup(hass)
+    release_first = asyncio.Event()
+
+    async def first_patch_fails_late(_status: str) -> dict:
+        mock_sleepme_client.set_device_status.side_effect = None
+        await release_first.wait()
+        raise SleepMeConnectionError("late failure")
+
+    mock_sleepme_client.set_device_status.side_effect = first_patch_fails_late
+
+    first = hass.async_create_task(
+        hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_HVAC_MODE,
+            {ATTR_ENTITY_ID: ENTITY_ID, ATTR_HVAC_MODE: HVACMode.AUTO},
+            blocking=True,
+        )
+    )
+    while mock_sleepme_client.set_device_status.await_count == 0:
+        await asyncio.sleep(0)
+
+    # Newer call: turn it off. Its PATCH succeeds at once.
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_HVAC_MODE: HVACMode.OFF},
+        blocking=True,
+    )
+    assert hass.states.get(ENTITY_ID).state == HVACMode.OFF
+
+    release_first.set()
+    with pytest.raises(HomeAssistantError):
+        await first
+    await hass.async_block_till_done()
+
+    # The old failure must not have cleared the newer optimistic OFF.
+    assert hass.states.get(ENTITY_ID).state == HVACMode.OFF
+
+
+async def test_mode_optimistic_window_restarts_after_a_slow_patch(
+    hass: HomeAssistant, mock_sleepme_client: AsyncMock
+) -> None:
+    """A PATCH may wait up to 30 s for a slot; the window counts from the send."""
+    from datetime import timedelta
+    from unittest.mock import patch as _patch
+
+    from homeassistant.util import dt as dt_util
+
+    await _setup(hass)
+    real_now = dt_util.utcnow()
+    offset = {"seconds": 0}
+
+    def shifted_now():
+        return real_now + timedelta(seconds=offset["seconds"])
+
+    async def slow_patch(_status: str) -> dict:
+        offset["seconds"] = 25  # the rate limiter held the command for 25 s
+        return {}
+
+    mock_sleepme_client.set_device_status.side_effect = slow_patch
+
+    with _patch(
+        "custom_components.sleepme_thermostat.climate.dt_util.utcnow", shifted_now
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_HVAC_MODE,
+            {ATTR_ENTITY_ID: ENTITY_ID, ATTR_HVAC_MODE: HVACMode.AUTO},
+            blocking=True,
+        )
+        # 20 s after the send, 45 s after the click: still optimistic.
+        offset["seconds"] = 45
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        entry.runtime_data.coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert hass.states.get(ENTITY_ID).state == HVACMode.AUTO

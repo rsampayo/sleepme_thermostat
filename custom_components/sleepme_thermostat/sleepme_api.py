@@ -215,47 +215,46 @@ class SleepMeAPI:
         what the user just asked for. A longer wait raises: caller decides.
 
         The lock is released while waiting, so other callers are not held up
-        behind a waiting command.
+        behind a waiting command. A waiter therefore owns nothing: when it
+        wakes it re-checks capacity, because another caller may have taken the
+        slot, and waits again if there is still time before its deadline.
         """
         is_command = method.upper() != "GET"
         max_wait = COMMAND_MAX_WAIT if is_command else RATE_LIMIT_EDGE_GRACE
+        deadline = time.monotonic() + max_wait
 
-        async with self._lock:
-            now = time.monotonic()
-            self._drop_expired_requests(now)
-            maxlen = self._request_times.maxlen
-            if maxlen is None or len(self._request_times) < maxlen:
-                self._request_times.append(now)
-                return
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                self._drop_expired_requests(now)
+                maxlen = self._request_times.maxlen
+                if maxlen is None or len(self._request_times) < maxlen:
+                    self._request_times.append(now)
+                    return
 
-            wait = RATE_LIMIT_WINDOW - (now - self._request_times[0])
-            if wait > max_wait:
-                # A refused read is routine: the coordinator keeps its last
-                # data and says so if it has to give up. A refused command
-                # is worth a warning because the user's request is dropped.
-                _LOGGER.log(
-                    logging.WARNING if is_command else logging.DEBUG,
-                    "Local rate limit hit on %s %s; would need %.1fs. Rejecting.",
-                    method,
-                    endpoint,
-                    wait,
-                )
-                raise SleepMeRateLimited(
-                    f"{method} {endpoint}: local rate-limiter at capacity"
-                )
+                wait = RATE_LIMIT_WINDOW - (now - self._request_times[0])
+                if now + wait > deadline:
+                    # A refused read is routine: the coordinator keeps its
+                    # last data and says so if it has to give up. A refused
+                    # command is worth a warning: the user's request is lost.
+                    _LOGGER.log(
+                        logging.WARNING if is_command else logging.DEBUG,
+                        "Local rate limit hit on %s %s; would need %.1fs. Rejecting.",
+                        method,
+                        endpoint,
+                        wait,
+                    )
+                    raise SleepMeRateLimited(
+                        f"{method} {endpoint}: local rate-limiter at capacity"
+                    )
 
-        _LOGGER.debug(
-            "Local rate limit full on %s %s; waiting %.3fs for a slot",
-            method,
-            endpoint,
-            wait,
-        )
-        await asyncio.sleep(max(wait, 0.0))
-
-        async with self._lock:
-            now = time.monotonic()
-            self._drop_expired_requests(now)
-            self._request_times.append(now)
+            _LOGGER.debug(
+                "Local rate limit full on %s %s; waiting %.3fs for a slot",
+                method,
+                endpoint,
+                wait,
+            )
+            await asyncio.sleep(max(wait, 0.0))
 
     def _drop_expired_requests(self, now: float) -> None:
         while self._request_times and now - self._request_times[0] >= RATE_LIMIT_WINDOW:
