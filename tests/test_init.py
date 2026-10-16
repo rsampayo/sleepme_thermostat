@@ -519,3 +519,59 @@ async def test_migrate_tracker_entry_retitles_device(
 
     assert entry.version == 5
     assert entry.title == "Sleep Tracker Bedroom"
+
+
+async def test_tracker_setup_removes_dock_entities_left_by_older_versions(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+) -> None:
+    """Before v4.3.0 a Tracker was set up as a Dock; its stale entities go away."""
+    mock_sleepme_client.get_device_status.return_value = tracker_status
+    device_id = "tracker-upgraded"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry_upgraded_tracker",
+        version=4,
+        unique_id=device_id,
+        title="Dock Pro Bedroom",
+        data={
+            "api_token": MOCK_API_TOKEN,
+            "device_id": device_id,
+            "firmware_version": "2.3.4-test",
+            "mac_address": "11:22:33:44:55:66",
+            "model": "ST501NA",
+            "serial_number": "TRACKER-TEST-SERIAL",
+        },
+    )
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    stale = {
+        "climate": "thermostat",
+        "binary_sensor": "water_low",
+        "sensor": "water_level",
+    }
+    for platform, suffix in stale.items():
+        registry.async_get_or_create(
+            platform,
+            DOMAIN,
+            f"{DOMAIN}_{device_id}_{suffix}",
+            config_entry=entry,
+        )
+    # An entity the Tracker still has keeps its registry entry (and entity_id).
+    connected_id = registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        f"{DOMAIN}_{device_id}_connected",
+        config_entry=entry,
+        suggested_object_id="dock_pro_bedroom_connected",
+    ).entity_id
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    for platform, suffix in stale.items():
+        unique_id = f"{DOMAIN}_{device_id}_{suffix}"
+        assert registry.async_get_entity_id(platform, DOMAIN, unique_id) is None
+    assert registry.async_get(connected_id) is not None
+    assert hass.states.get(connected_id).state == "on"

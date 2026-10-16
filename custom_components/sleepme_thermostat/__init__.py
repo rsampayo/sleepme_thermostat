@@ -22,6 +22,7 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from homeassistant.util.json import JsonArrayType
 
@@ -48,6 +49,19 @@ from .sleepme_api import SleepMeAPIError
 from .update_manager import SleepMeUpdateManager, SleepReportUpdateManager
 
 _LOGGER = logging.getLogger(__name__)
+
+# Entities a Dock has and a Sleep Tracker does not. A Tracker configured before
+# v4.3.0 was set up as a Dock, so these linger in the entity registry as
+# permanently unavailable entries until removed. Keyed by (platform, unique_id
+# suffix).
+DOCK_ONLY_ENTITIES: tuple[tuple[str, str], ...] = (
+    ("climate", "thermostat"),
+    ("binary_sensor", "water_low"),
+    ("sensor", "brightness_level"),
+    ("sensor", "display_temperature_unit"),
+    ("sensor", "time_zone"),
+    ("sensor", "water_level"),
+)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -193,6 +207,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
                 err,
             )
 
+    if is_sleep_tracker(model):
+        _remove_dock_only_entities(hass, device_id)
+
     entry.runtime_data = SleepMeData(
         client=client,
         coordinator=coordinator,
@@ -219,6 +236,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
         entry.data.get("firmware_version"),
     )
     return True
+
+
+def _remove_dock_only_entities(hass: HomeAssistant, device_id: str) -> None:
+    """Drop Dock entities left behind when a Tracker was set up as a Dock."""
+    registry = er.async_get(hass)
+    for platform, suffix in DOCK_ONLY_ENTITIES:
+        unique_id = f"{DOMAIN}_{device_id}_{suffix}"
+        entity_id = registry.async_get_entity_id(platform, DOMAIN, unique_id)
+        if entity_id is None:
+            continue
+        registry.async_remove(entity_id)
+        _LOGGER.info("Removed %s: a Sleep Tracker has no %s entity", entity_id, suffix)
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
