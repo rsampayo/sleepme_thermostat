@@ -16,13 +16,24 @@ every entity to unavailable because a command used the last free slot.
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from collections.abc import Awaitable
+from datetime import date, timedelta
+from typing import Any
 
 import httpx
 from homeassistant.config_entries import ConfigEntryAuthFailed
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
+from .const import MAX_SLEEP_REPORT_DAYS_BACK, SLEEP_REPORT_BACKFILL_INTERVAL
+from .sleep_reports import (
+    hypnogram_timeline,
+    latest_sleep_report,
+    summarize_sleep_history,
+    summarize_sleep_report,
+)
 from .sleepme import SleepMeClient
 from .sleepme_api import (
     SleepMeAuthError,
@@ -35,6 +46,24 @@ _LOGGER = logging.getLogger(__name__)
 # Beyond this many skipped polls in a row the data is too old to present as
 # current, so the failure is surfaced.
 MAX_CONSECUTIVE_SKIPPED_POLLS = 2
+
+
+async def _async_fetch[T](coro: Awaitable[T]) -> T:
+    """Run a client request and translate transport failures for coordinators."""
+    try:
+        return await coro
+    except SleepMeAuthError as err:
+        raise ConfigEntryAuthFailed("Invalid or revoked SleepMe API token") from err
+    except SleepMeRateLimited as err:
+        raise UpdateFailed(
+            "SleepMe API rate-limited; will retry next interval"
+        ) from err
+    except SleepMeConnectionError as err:
+        raise UpdateFailed(f"Cannot reach SleepMe API: {err}") from err
+    except httpx.HTTPStatusError as err:
+        raise UpdateFailed(f"HTTP {err.response.status_code} from SleepMe API") from err
+    except ValueError as err:
+        raise UpdateFailed(str(err)) from err
 
 
 class SleepMeUpdateManager(DataUpdateCoordinator):
@@ -61,17 +90,18 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         """Fetch the latest device status. Raise typed framework exceptions on failure."""
         try:
-            device_status = await self.client.get_device_status()
-        except SleepMeAuthError as err:
-            raise ConfigEntryAuthFailed("Invalid or revoked SleepMe API token") from err
-        except SleepMeRateLimited as err:
+            device_status = await _async_fetch(self.client.get_device_status())
+        except UpdateFailed as err:
+            # A poll refused by our own limiter is not an outage: the server
+            # was never asked. Keep the last data for a couple of intervals
+            # rather than flipping every entity to unavailable.
+            if not isinstance(err.__cause__, SleepMeRateLimited):
+                raise
             if (
                 self.data is None
                 or self._consecutive_skipped_polls >= MAX_CONSECUTIVE_SKIPPED_POLLS
             ):
-                raise UpdateFailed(
-                    "SleepMe API rate-limited; will retry next interval"
-                ) from err
+                raise
             self._consecutive_skipped_polls += 1
             _LOGGER.debug(
                 "[Device %s] Poll skipped by the local rate limiter (%d in a row); "
@@ -80,15 +110,6 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
                 self._consecutive_skipped_polls,
             )
             return self.data
-        except SleepMeConnectionError as err:
-            raise UpdateFailed(f"Cannot reach SleepMe API: {err}") from err
-        except httpx.HTTPStatusError as err:
-            # Non-401/403/429/5xx HTTP errors that transport let through.
-            raise UpdateFailed(
-                f"HTTP {err.response.status_code} from SleepMe API"
-            ) from err
-        except ValueError as err:
-            raise UpdateFailed(str(err)) from err
 
         self._consecutive_skipped_polls = 0
         return {
@@ -96,3 +117,269 @@ class SleepMeUpdateManager(DataUpdateCoordinator):
             "control": device_status.get("control", {}),
             "about": device_status.get("about", {}),
         }
+
+
+class SleepReportUpdateManager(DataUpdateCoordinator[list[dict[str, Any]]]):
+    """Keep a rolling month of account sleep reports.
+
+    Every tick refreshes the newest seven-day window, because only recent
+    reports can still change. Older windows are immutable, so each one is
+    fetched once and cached. They are backfilled one per tick on a short
+    interval, which keeps this coordinator at two requests per tick while it
+    catches up and one request per tick afterwards.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api_url: str,
+        token: str,
+        *,
+        history_days: int,
+        scan_interval: int,
+        sleep_target_seconds: float,
+    ) -> None:
+        self.client = SleepMeClient(hass, api_url, token)
+        self.history_days = history_days
+        self.sleep_target_seconds = sleep_target_seconds
+        # Derived once per refresh. 53 sensors read these; recomputing them in
+        # every native_value was about 845 aggregation passes per refresh.
+        self.latest_summary: dict[str, Any] = {}
+        self.history_summary: dict[str, Any] = {}
+        self.latest_hypnogram: list[dict[str, Any]] = []
+        self._steady_interval = timedelta(seconds=scan_interval)
+        self._backfill_interval = timedelta(seconds=SLEEP_REPORT_BACKFILL_INTERVAL)
+        self._reports_by_date: dict[date, dict[str, Any]] = {}
+        # None until the first tick decides which older windows are owed.
+        self._pending_backfill: list[tuple[date, int]] | None = None
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="SleepMe Sleep Reports",
+            update_interval=self._backfill_interval,
+            # Reports change about once a day. Skip the state writes when a
+            # refresh returns the same data.
+            always_update=False,
+        )
+
+    @property
+    def pending_backfill_windows(self) -> int:
+        """Return how many older history windows are still to be fetched."""
+        return len(self._pending_backfill or [])
+
+    async def _async_update_data(self) -> list[dict[str, Any]]:
+        """Refresh the newest window and backfill at most one older window."""
+        # dt_util.now() uses HA's configured zone, which HA loads off the event
+        # loop at startup. Building a ZoneInfo here would read tzdata from disk
+        # inside the loop, and would also miss a later time-zone change.
+        time_zone = self.hass.config.time_zone
+        today = dt_util.now().date()
+        newest_window, *older_windows = _report_windows(today, self.history_days)
+        if self._pending_backfill is None:
+            self._pending_backfill = older_windows
+
+        # The newest window decides whether this refresh succeeded.
+        newest_reports = await self._async_fetch_window(newest_window, time_zone)
+        self._merge(newest_reports, overwrite=True)
+
+        if self._pending_backfill:
+            await self._async_backfill_one_window(time_zone)
+
+        self.update_interval = (
+            self._backfill_interval if self._pending_backfill else self._steady_interval
+        )
+        self._evict_older_than(today - timedelta(days=self.history_days - 1))
+        reports = [self._reports_by_date[key] for key in sorted(self._reports_by_date)]
+        latest = latest_sleep_report(reports)
+        self.latest_summary = summarize_sleep_report(
+            latest,
+            sleep_target_seconds=self.sleep_target_seconds,
+        )
+        self.latest_hypnogram = hypnogram_timeline(latest)
+        self.history_summary = summarize_sleep_history(
+            reports,
+            sleep_target_seconds=self.sleep_target_seconds,
+            today=today,
+        )
+        return reports
+
+    async def _async_backfill_one_window(self, time_zone: str) -> None:
+        """Fetch the next owed history window; a failure only postpones it.
+
+        Authentication failures are not caught here, so they still reach the
+        reauth flow.
+        """
+        assert self._pending_backfill
+        window = self._pending_backfill[0]
+        try:
+            reports = await self._async_fetch_window(window, time_zone)
+        except UpdateFailed as err:
+            _LOGGER.debug(
+                "Sleep report history window ending %s not fetched; will retry: %s",
+                window[0],
+                err,
+            )
+            return
+        # A fresher copy from the newest window wins over a backfilled one.
+        self._merge(reports, overwrite=False)
+        self._pending_backfill.pop(0)
+
+    async def _async_fetch_window(
+        self, window: tuple[date, int], time_zone: str
+    ) -> list[dict[str, Any]]:
+        window_end, days_back = window
+        return await _async_fetch(
+            self.client.get_sleep_reports(
+                start_date=window_end,
+                days_back=days_back,
+                time_zone=time_zone,
+            )
+        )
+
+    def _merge(self, reports: list[dict[str, Any]], *, overwrite: bool) -> None:
+        """Cache reports by calendar date, ignoring ones without a valid date."""
+        for report in reports:
+            report_date = _parse_report_date(report.get("date"))
+            if report_date is None:
+                continue
+            if overwrite or report_date not in self._reports_by_date:
+                self._reports_by_date[report_date] = report
+
+    def _evict_older_than(self, cutoff: date) -> None:
+        """Drop cached dates that fell out of the history range."""
+        for report_date in [key for key in self._reports_by_date if key < cutoff]:
+            del self._reports_by_date[report_date]
+
+
+class BedExitReportRefresh:
+    """Refresh the sleep reports shortly after the sleeper leaves the bed.
+
+    SleepMe finalizes a report about 15 minutes after the bed empties, but the
+    report coordinator ticks every 30 minutes, so the morning numbers could lag
+    by up to 45 minutes. When the Tracker stops detecting the sleeper a refresh
+    is scheduled; if they are back in bed before the delay elapses it is
+    cancelled, so a short night-time exit costs no request.
+
+    SleepMe's own exit time often trails the Tracker's, so the first refresh
+    can come too early. While the newest report is still the one from before
+    the exit, the refresh is retried a limited number of times.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        live_coordinator: SleepMeUpdateManager,
+        report_coordinator: SleepReportUpdateManager,
+        *,
+        delay: timedelta,
+        retry_delay: timedelta,
+        max_retries: int,
+    ) -> None:
+        self._hass = hass
+        self._live = live_coordinator
+        self._reports = report_coordinator
+        self._delay = delay
+        self._retry_delay = retry_delay
+        self._max_retries = max_retries
+        self._was_in_bed: bool | None = None
+        self._cancel_timer: CALLBACK_TYPE | None = None
+        self._report_date_at_exit: date | None = None
+        self._retries_left = 0
+
+    @property
+    def pending(self) -> bool:
+        """Return whether a refresh is waiting for its delay to elapse."""
+        return self._cancel_timer is not None
+
+    @callback
+    def start(self) -> CALLBACK_TYPE:
+        """Watch the live coordinator; the returned callable stops watching."""
+        self._was_in_bed = self._in_bed()
+        remove_listener = self._live.async_add_listener(self._handle_live_update)
+
+        @callback
+        def stop() -> None:
+            remove_listener()
+            self._cancel()
+
+        return stop
+
+    def _in_bed(self) -> bool | None:
+        data = self._live.data or {}
+        detected = data.get("status", {}).get("user_detected")
+        return detected if isinstance(detected, bool) else None
+
+    def _latest_report_date(self) -> date | None:
+        return self._reports.latest_summary.get("date")
+
+    def _new_report_arrived(self) -> bool:
+        latest = self._latest_report_date()
+        return latest is not None and latest != self._report_date_at_exit
+
+    @callback
+    def _handle_live_update(self) -> None:
+        in_bed = self._in_bed()
+        if in_bed is None:
+            return
+        if in_bed and (self.pending or self._retries_left):
+            _LOGGER.debug("Sleeper is back in bed; report refresh cancelled")
+            self._cancel()
+        elif self._was_in_bed and not in_bed and not self.pending:
+            _LOGGER.debug("Bed empty; refreshing sleep reports in %s", self._delay)
+            self._report_date_at_exit = self._latest_report_date()
+            self._retries_left = self._max_retries
+            self._schedule(self._delay)
+        self._was_in_bed = in_bed
+
+    def _schedule(self, delay: timedelta) -> None:
+        self._cancel_timer = async_call_later(self._hass, delay, self._fire)
+
+    @callback
+    def _fire(self, _now: Any) -> None:
+        self._cancel_timer = None
+        self._hass.async_create_task(self._async_refresh())
+
+    async def _async_refresh(self) -> None:
+        # A regular tick may already have brought the report in.
+        if not self._new_report_arrived():
+            await self._reports.async_request_refresh()
+        if self._new_report_arrived():
+            self._retries_left = 0
+            return
+        # Cancelled while the request was in flight, or out of retries.
+        if self._retries_left <= 0 or self.pending:
+            return
+        self._retries_left -= 1
+        _LOGGER.debug("No new sleep report yet; trying again in %s", self._retry_delay)
+        self._schedule(self._retry_delay)
+
+    def _cancel(self) -> None:
+        self._retries_left = 0
+        if self._cancel_timer is not None:
+            self._cancel_timer()
+            self._cancel_timer = None
+
+
+def _parse_report_date(value: Any) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _report_windows(end_date: date, history_days: int) -> list[tuple[date, int]]:
+    """Split a history range into the endpoint's inclusive seven-day windows."""
+    windows: list[tuple[date, int]] = []
+    remaining = max(history_days, 1)
+    window_end = end_date
+    max_window_days = MAX_SLEEP_REPORT_DAYS_BACK + 1
+
+    while remaining:
+        window_days = min(remaining, max_window_days)
+        windows.append((window_end, window_days - 1))
+        remaining -= window_days
+        window_end -= timedelta(days=window_days)
+
+    return windows

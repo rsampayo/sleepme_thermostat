@@ -30,6 +30,7 @@ import asyncio
 import logging
 import time
 from collections import deque
+from collections.abc import Mapping
 from email.utils import parsedate_to_datetime
 from typing import Any
 from weakref import WeakValueDictionary
@@ -129,6 +130,7 @@ class SleepMeAPI:
         endpoint: str,
         *,
         data: dict | None = None,
+        params: Mapping[str, str | int] | None = None,
         retries: int = DEFAULT_RETRIES,
     ) -> Any:
         """Send one request with retry-on-transient-error.
@@ -143,7 +145,9 @@ class SleepMeAPI:
         while True:
             await self._enforce_local_rate_limit(method, endpoint)
             try:
-                return await self._perform_request(method, endpoint, data=data)
+                return await self._perform_request(
+                    method, endpoint, data=data, params=params
+                )
             except httpx.HTTPStatusError as err:
                 status = err.response.status_code
                 if status in (401, 403):
@@ -266,6 +270,7 @@ class SleepMeAPI:
         endpoint: str,
         *,
         data: dict | None,
+        params: Mapping[str, str | int] | None,
     ) -> Any:
         headers = {"Authorization": f"Bearer {self.token}"}
         _LOGGER.debug("%s %s/%s data=%s", method, self.api_url, endpoint, data)
@@ -274,6 +279,7 @@ class SleepMeAPI:
             f"{self.api_url}/{endpoint}",
             headers=headers,
             json=data,
+            params=params,
         )
         response.raise_for_status()
         return response.json()
