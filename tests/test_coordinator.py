@@ -464,6 +464,8 @@ async def test_repeated_skipped_polls_eventually_surface_as_a_failure(
 # ---------- a lasting bed exit refreshes the reports early ---------------------
 
 BED_EXIT_DELAY = timedelta(minutes=20)
+BED_EXIT_RETRY_DELAY = timedelta(minutes=15)
+BED_EXIT_MAX_RETRIES = 2
 
 
 async def _tracker_pair(
@@ -475,7 +477,14 @@ async def _tracker_pair(
     await live.async_refresh()
     reports = _report_coordinator(hass)
     await reports.async_refresh()
-    refresher = BedExitReportRefresh(hass, live, reports, delay=BED_EXIT_DELAY)
+    refresher = BedExitReportRefresh(
+        hass,
+        live,
+        reports,
+        delay=BED_EXIT_DELAY,
+        retry_delay=BED_EXIT_RETRY_DELAY,
+        max_retries=BED_EXIT_MAX_RETRIES,
+    )
     return live, reports, refresher
 
 
@@ -486,37 +495,187 @@ async def _set_in_bed(
     await live.async_refresh()
 
 
-async def test_lasting_bed_exit_refreshes_reports_once_after_the_delay(
+def _with_new_night(sleep_reports: list[dict]) -> list[dict]:
+    """Return the fixture reports plus a finalized report for 2026-07-13."""
+    newest = dict(next(r for r in sleep_reports if r["date"] == "2026-07-12"))
+    newest["date"] = "2026-07-13"
+    return [r for r in sleep_reports if r["date"] != "2026-07-13"] + [newest]
+
+
+async def _advance(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, delta: timedelta
+) -> None:
+    freezer.tick(delta)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+
+async def test_lasting_bed_exit_refreshes_reports_after_the_delay(
     hass: HomeAssistant,
     mock_sleepme_client: AsyncMock,
     tracker_status: dict,
+    sleep_reports: list[dict],
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    """Out of bed and still out 20 minutes later: one report request."""
+    """Out of bed and still out 20 minutes later: one refresh, no retry."""
     freezer.move_to("2026-07-13 07:00:00+00:00")
     live, reports, refresher = await _tracker_pair(
         hass, mock_sleepme_client, tracker_status
     )
     stop = refresher.start()
-    before = mock_sleepme_client.get_sleep_reports.await_count
 
-    await _set_in_bed(live, tracker_status, False)
-    assert refresher.pending is True
-    # Still out of bed on later polls: no second timer, no early request.
-    await live.async_refresh()
-    assert mock_sleepme_client.get_sleep_reports.await_count == before
+    with patch.object(
+        reports, "async_request_refresh", wraps=reports.async_request_refresh
+    ) as request_refresh:
+        await _set_in_bed(live, tracker_status, False)
+        assert refresher.pending is True
+        # Still out of bed on later polls: no second timer, no early request.
+        await live.async_refresh()
+        assert request_refresh.call_count == 0
 
-    freezer.tick(BED_EXIT_DELAY + timedelta(seconds=1))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+        mock_sleepme_client.get_sleep_reports.return_value = _with_new_night(
+            sleep_reports
+        )
+        await _advance(hass, freezer, BED_EXIT_DELAY + timedelta(seconds=1))
 
-    assert refresher.pending is False
-    assert mock_sleepme_client.get_sleep_reports.await_count > before
+        assert request_refresh.call_count == 1
+        assert reports.latest_summary["date"] == date(2026, 7, 13)
+        assert refresher.pending is False
+
+        await _advance(hass, freezer, BED_EXIT_RETRY_DELAY * 3)
+        assert request_refresh.call_count == 1
     stop()
     # Let the coordinator's request debouncer finish its cooldown.
-    freezer.tick(timedelta(seconds=11))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await _advance(hass, freezer, timedelta(seconds=11))
+
+
+async def test_bed_exit_refresh_retries_until_the_report_appears(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    sleep_reports: list[dict],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """SleepMe finalized late: the first refresh finds nothing, a retry does."""
+    freezer.move_to("2026-07-13 07:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+
+    with patch.object(
+        reports, "async_request_refresh", wraps=reports.async_request_refresh
+    ) as request_refresh:
+        await _set_in_bed(live, tracker_status, False)
+        await _advance(hass, freezer, BED_EXIT_DELAY + timedelta(seconds=1))
+        assert request_refresh.call_count == 1
+        assert refresher.pending is True
+
+        mock_sleepme_client.get_sleep_reports.return_value = _with_new_night(
+            sleep_reports
+        )
+        await _advance(hass, freezer, BED_EXIT_RETRY_DELAY)
+
+        assert request_refresh.call_count == 2
+        assert reports.latest_summary["date"] == date(2026, 7, 13)
+        assert refresher.pending is False
+    stop()
+    # Let the coordinator's request debouncer finish its cooldown.
+    await _advance(hass, freezer, timedelta(seconds=11))
+
+
+async def test_bed_exit_refresh_gives_up_after_its_retries(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A daytime exit never produces a report: three refreshes, then none."""
+    freezer.move_to("2026-07-13 15:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+
+    with patch.object(
+        reports, "async_request_refresh", wraps=reports.async_request_refresh
+    ) as request_refresh:
+        await _set_in_bed(live, tracker_status, False)
+        await _advance(hass, freezer, BED_EXIT_DELAY + timedelta(seconds=1))
+        for _ in range(BED_EXIT_MAX_RETRIES):
+            await _advance(hass, freezer, BED_EXIT_RETRY_DELAY)
+
+        assert request_refresh.call_count == 1 + BED_EXIT_MAX_RETRIES
+        assert refresher.pending is False
+
+        await _advance(hass, freezer, BED_EXIT_RETRY_DELAY * 3)
+        assert request_refresh.call_count == 1 + BED_EXIT_MAX_RETRIES
+    stop()
+    # Let the coordinator's request debouncer finish its cooldown.
+    await _advance(hass, freezer, timedelta(seconds=11))
+
+
+async def test_bed_exit_retry_skips_the_request_once_a_tick_found_the_report(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    sleep_reports: list[dict],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The regular tick brought the report in first: the retry spends nothing."""
+    freezer.move_to("2026-07-13 07:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+
+    with patch.object(
+        reports, "async_request_refresh", wraps=reports.async_request_refresh
+    ) as request_refresh:
+        await _set_in_bed(live, tracker_status, False)
+        await _advance(hass, freezer, BED_EXIT_DELAY + timedelta(seconds=1))
+        assert refresher.pending is True
+
+        mock_sleepme_client.get_sleep_reports.return_value = _with_new_night(
+            sleep_reports
+        )
+        await reports.async_refresh()
+        await _advance(hass, freezer, BED_EXIT_RETRY_DELAY)
+
+        assert request_refresh.call_count == 1
+        assert refresher.pending is False
+    stop()
+    # Let the coordinator's request debouncer finish its cooldown.
+    await _advance(hass, freezer, timedelta(seconds=11))
+
+
+async def test_back_in_bed_cancels_a_pending_retry(
+    hass: HomeAssistant,
+    mock_sleepme_client: AsyncMock,
+    tracker_status: dict,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Back in bed after the first refresh: the retries are dropped."""
+    freezer.move_to("2026-07-13 03:00:00+00:00")
+    live, reports, refresher = await _tracker_pair(
+        hass, mock_sleepme_client, tracker_status
+    )
+    stop = refresher.start()
+
+    with patch.object(
+        reports, "async_request_refresh", wraps=reports.async_request_refresh
+    ) as request_refresh:
+        await _set_in_bed(live, tracker_status, False)
+        await _advance(hass, freezer, BED_EXIT_DELAY + timedelta(seconds=1))
+        assert refresher.pending is True
+
+        await _set_in_bed(live, tracker_status, True)
+        assert refresher.pending is False
+        await _advance(hass, freezer, BED_EXIT_RETRY_DELAY * 3)
+        assert request_refresh.call_count == 1
+    stop()
+    # Let the coordinator's request debouncer finish its cooldown.
+    await _advance(hass, freezer, timedelta(seconds=11))
 
 
 async def test_short_bed_exit_costs_no_request(

@@ -54,7 +54,7 @@ The personal sleep target is configured under *Settings â†’ Devices & Services â
 ## Known limitations
 
 - Sleep reports belong to the Sleepme account, not to a device. The API gives no way to tell which tracker recorded a session, so two trackers on one account would show the same reports.
-- Report sensors describe finalized sessions. Sleepme finalizes a report about 15 minutes after the sleeper leaves the bed. Reports refresh every 30 minutes, and once more 20 minutes after the Tracker sees the bed empty and stay empty, so the morning report normally arrives within half an hour of getting up.
+- Report sensors describe finalized sessions. Sleepme finalizes a report about 15 minutes after the sleeper leaves the bed. Sleepme's own exit time often trails the Tracker's by several minutes. Reports refresh every 30 minutes, and again 20 minutes after the Tracker sees the bed empty and stay empty. If no newer report has appeared yet, that refresh is retried every 15 minutes, at most twice. The morning report normally arrives within about 35 minutes of getting up, for at most three extra requests.
 - While the tracker is offline, its live sensors and Bed Occupancy are unavailable. The API keeps returning the last known values, and those are not shown as current.
 
 ## Blueprints

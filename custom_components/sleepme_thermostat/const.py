@@ -58,6 +58,12 @@ SLEEP_REPORT_BACKFILL_INTERVAL = 2 * 60
 
 # SleepMe finalizes a report about 15 minutes after the bed empties. When the
 # Tracker stops detecting the sleeper and does not see them again for this
-# long, the report coordinator refreshes once instead of waiting for its next
-# 30-minute tick. One extra request per bed exit that lasts.
+# long, the report coordinator refreshes instead of waiting for its next
+# 30-minute tick.
 SLEEP_REPORT_BED_EXIT_REFRESH_DELAY = 20 * 60
+# SleepMe's own exit time often trails the Tracker's by 6 to 19 minutes, so
+# the first refresh can arrive before the report exists. While no newer report
+# has appeared, try again this much later, at most this many times. At most
+# three requests per bed exit that lasts.
+SLEEP_REPORT_BED_EXIT_RETRY_DELAY = 15 * 60
+SLEEP_REPORT_BED_EXIT_MAX_RETRIES = 2

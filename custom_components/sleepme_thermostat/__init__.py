@@ -41,7 +41,9 @@ from .const import (
     DOMAIN,
     MAX_SLEEP_REPORT_DAYS_BACK,
     SERVICE_GET_SLEEP_REPORTS,
+    SLEEP_REPORT_BED_EXIT_MAX_RETRIES,
     SLEEP_REPORT_BED_EXIT_REFRESH_DELAY,
+    SLEEP_REPORT_BED_EXIT_RETRY_DELAY,
     SLEEP_REPORT_HISTORY_DAYS,
 )
 from .helpers import is_sleep_tracker
@@ -224,6 +226,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SleepMeConfigEntry) -> b
             coordinator,
             report_coordinator,
             delay=timedelta(seconds=SLEEP_REPORT_BED_EXIT_REFRESH_DELAY),
+            retry_delay=timedelta(seconds=SLEEP_REPORT_BED_EXIT_RETRY_DELAY),
+            max_retries=SLEEP_REPORT_BED_EXIT_MAX_RETRIES,
         )
         entry.async_on_unload(bed_exit_refresh.start())
 

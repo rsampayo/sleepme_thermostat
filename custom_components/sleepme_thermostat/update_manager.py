@@ -259,6 +259,10 @@ class BedExitReportRefresh:
     by up to 45 minutes. When the Tracker stops detecting the sleeper a refresh
     is scheduled; if they are back in bed before the delay elapses it is
     cancelled, so a short night-time exit costs no request.
+
+    SleepMe's own exit time often trails the Tracker's, so the first refresh
+    can come too early. While the newest report is still the one from before
+    the exit, the refresh is retried a limited number of times.
     """
 
     def __init__(
@@ -268,17 +272,23 @@ class BedExitReportRefresh:
         report_coordinator: SleepReportUpdateManager,
         *,
         delay: timedelta,
+        retry_delay: timedelta,
+        max_retries: int,
     ) -> None:
         self._hass = hass
         self._live = live_coordinator
         self._reports = report_coordinator
         self._delay = delay
+        self._retry_delay = retry_delay
+        self._max_retries = max_retries
         self._was_in_bed: bool | None = None
         self._cancel_timer: CALLBACK_TYPE | None = None
+        self._report_date_at_exit: date | None = None
+        self._retries_left = 0
 
     @property
     def pending(self) -> bool:
-        """Return whether a refresh is waiting for the delay to elapse."""
+        """Return whether a refresh is waiting for its delay to elapse."""
         return self._cancel_timer is not None
 
     @callback
@@ -299,27 +309,52 @@ class BedExitReportRefresh:
         detected = data.get("status", {}).get("user_detected")
         return detected if isinstance(detected, bool) else None
 
+    def _latest_report_date(self) -> date | None:
+        return self._reports.latest_summary.get("date")
+
+    def _new_report_arrived(self) -> bool:
+        latest = self._latest_report_date()
+        return latest is not None and latest != self._report_date_at_exit
+
     @callback
     def _handle_live_update(self) -> None:
         in_bed = self._in_bed()
         if in_bed is None:
             return
-        if in_bed and self.pending:
+        if in_bed and (self.pending or self._retries_left):
             _LOGGER.debug("Sleeper is back in bed; report refresh cancelled")
             self._cancel()
         elif self._was_in_bed and not in_bed and not self.pending:
             _LOGGER.debug("Bed empty; refreshing sleep reports in %s", self._delay)
-            self._cancel_timer = async_call_later(
-                self._hass, self._delay, self._refresh
-            )
+            self._report_date_at_exit = self._latest_report_date()
+            self._retries_left = self._max_retries
+            self._schedule(self._delay)
         self._was_in_bed = in_bed
 
+    def _schedule(self, delay: timedelta) -> None:
+        self._cancel_timer = async_call_later(self._hass, delay, self._fire)
+
     @callback
-    def _refresh(self, _now: Any) -> None:
+    def _fire(self, _now: Any) -> None:
         self._cancel_timer = None
-        self._hass.async_create_task(self._reports.async_request_refresh())
+        self._hass.async_create_task(self._async_refresh())
+
+    async def _async_refresh(self) -> None:
+        # A regular tick may already have brought the report in.
+        if not self._new_report_arrived():
+            await self._reports.async_request_refresh()
+        if self._new_report_arrived():
+            self._retries_left = 0
+            return
+        # Cancelled while the request was in flight, or out of retries.
+        if self._retries_left <= 0 or self.pending:
+            return
+        self._retries_left -= 1
+        _LOGGER.debug("No new sleep report yet; trying again in %s", self._retry_delay)
+        self._schedule(self._retry_delay)
 
     def _cancel(self) -> None:
+        self._retries_left = 0
         if self._cancel_timer is not None:
             self._cancel_timer()
             self._cancel_timer = None
