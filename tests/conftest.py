@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-pytest_plugins = ["pytest_homeassistant_custom_component"]
+try:
+    # HA 2026.11+: pytest-homeassistant registers itself as a plugin.
+    import pytest_homeassistant  # noqa: F401
+except ImportError:
+    pytest_plugins = ["pytest_homeassistant_custom_component"]
 
 
 @pytest.fixture(autouse=True)

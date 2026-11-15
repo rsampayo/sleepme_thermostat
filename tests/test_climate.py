@@ -5,6 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from custom_components.sleepme_thermostat.climate import (
+    NATIVE_TEMPERATURES,
+    SleepMeThermostat,
+)
 from custom_components.sleepme_thermostat.const import (
     API_URL,
     DOMAIN,
@@ -32,8 +36,8 @@ from homeassistant.components.climate import (
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from tests.common import MockConfigEntry
 from tests.const import MOCK_API_TOKEN, MOCK_DEVICE_ID, MOCK_NAME
 
 ENTITY_ID = f"climate.dock_pro_{MOCK_NAME.lower().replace(' ', '_')}"
@@ -694,3 +698,23 @@ async def test_mode_optimistic_window_restarts_after_a_slow_patch(
         entry.runtime_data.coordinator.async_update_listeners()
         await hass.async_block_till_done()
         assert hass.states.get(ENTITY_ID).state == HVACMode.AUTO
+
+
+def test_temperature_properties_match_ha_release() -> None:
+    """Only the names the running HA expects are defined.
+
+    On 2026.11+ the old names trigger a deprecation warning at import and stop
+    working in 2027.11; before 2026.11 HA only reads the old names.
+    """
+    defined = set(vars(SleepMeThermostat))
+    legacy = {"_attr_temperature_unit", "current_temperature", "target_temperature"}
+    native = {
+        "_attr_native_temperature_unit",
+        "native_current_temperature",
+        "native_target_temperature",
+    }
+    if NATIVE_TEMPERATURES:
+        assert native <= defined
+        assert not legacy & defined
+    else:
+        assert legacy <= defined

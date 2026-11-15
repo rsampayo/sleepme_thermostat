@@ -9,8 +9,8 @@ from custom_components.sleepme_thermostat.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from tests.common import MockConfigEntry
 from tests.const import MOCK_API_TOKEN, MOCK_DEVICE_ID, MOCK_NAME
 
 
