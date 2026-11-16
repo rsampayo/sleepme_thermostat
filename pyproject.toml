@@ -63,6 +63,9 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "-p", "no:cacheprovider",
+    # pytest-homeassistant installs its httpx alias before respx loads; the
+    # standalone respx plugin would import httpx first.
+    "-p", "no:respx",
 ]
 norecursedirs = [".git", ".github", "custom_components"]
 

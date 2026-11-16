@@ -8,8 +8,8 @@ from custom_components.sleepme_thermostat.const import API_URL, DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from tests.common import MockConfigEntry
 from tests.const import MOCK_API_TOKEN, MOCK_DEVICE_ID, MOCK_NAME
 
 

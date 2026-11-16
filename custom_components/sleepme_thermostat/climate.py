@@ -55,6 +55,10 @@ from .sleepme_api import (
     SleepMeAuthError,
 )
 
+# HA 2026.11 renamed the climate temperature properties to native_*. The old
+# names warn there and stop working in 2027.11; older releases only know them.
+NATIVE_TEMPERATURES = hasattr(ClimateEntity, "native_temperature_unit")
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
@@ -97,7 +101,7 @@ async def async_setup_entry(
 class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
     _attr_has_entity_name = True
     _attr_name = None  # primary entity — friendly name == device name
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TURN_ON
@@ -141,7 +145,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
     # ---------- read properties -------------------------------------------------
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         water_temp_c = self.coordinator.data["status"].get("water_temperature_c")
         # Gen-2 / Chilipad 2.0 units report -1 for water_temperature_c (and _f)
         # while idle in standby — a "no reading" sentinel, not a real
@@ -151,9 +155,15 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         return water_temp_c
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Return the target temperature, clamping API sentinels to physical limits."""
         return clamp_api_sentinel(self._raw_setpoint())
+
+    # Type checkers see the 2026.11+ class, where the old names are final.
+    if not TYPE_CHECKING and not NATIVE_TEMPERATURES:
+        _attr_temperature_unit = UnitOfTemperature.CELSIUS
+        current_temperature = native_current_temperature
+        target_temperature = native_target_temperature
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -293,7 +303,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
         if preset_mode in PRESET_TEMPERATURES:
             raw = self._raw_setpoint()
             if raw is not None and raw not in PRESET_TEMPERATURES.values():
-                self._previous_target_temperature = self.target_temperature
+                self._previous_target_temperature = self.native_target_temperature
             await self.async_set_temperature(
                 temperature=PRESET_TEMPERATURES[preset_mode]
             )
@@ -303,7 +313,7 @@ class SleepMeThermostat(CoordinatorEntity, ClimateEntity):
             # reasonable.
             restore = self._previous_target_temperature
             if restore is None:
-                restore = self.current_temperature
+                restore = self.native_current_temperature
             if restore is not None:
                 await self.async_set_temperature(temperature=restore)
 

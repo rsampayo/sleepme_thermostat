@@ -61,15 +61,20 @@ jobs:
         # harness on CI runners. The fix would require pinning pycares back to
         # an older version, which has security implications. Three versions
         # (2026.1, 2026.3, 2026.5) still give ~5 months of HA coverage.
+        # From 2026.11 HA publishes its own test plugin, pytest-homeassistant,
+        # versioned with HA; p-h-c-c stops at 2026.10.
         include:
           - ha-version: "2026.1"
-            phcc-version: "0.13.305"
+            test-plugin: "pytest-homeassistant-custom-component==0.13.305"
             python-version: "3.13"
           - ha-version: "2026.3"
-            phcc-version: "0.13.320"
+            test-plugin: "pytest-homeassistant-custom-component==0.13.320"
             python-version: "3.14"
           - ha-version: "2026.5"
-            phcc-version: "0.13.331"
+            test-plugin: "pytest-homeassistant-custom-component==0.13.331"
+            python-version: "3.14"
+          - ha-version: "2026.11"
+            test-plugin: "pytest-homeassistant==2026.11.1"
             python-version: "3.14"
     steps:
       - uses: actions/checkout@v4
@@ -78,13 +83,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements_test.txt
-      - name: Install matrix-specific HA + phcc
-        # pytest-cov and pytest are transitive deps of pytest-homeassistant-custom-component;
+      - name: Install matrix-specific HA + test plugin
+        # pytest-cov and pytest are transitive deps of the test plugin;
         # pinning them explicitly causes resolver conflicts on older phcc versions.
         run: |
           pip install --upgrade-strategy eager \
             "homeassistant==${{ matrix.ha-version }}.*" \
-            "pytest-homeassistant-custom-component==${{ matrix.phcc-version }}" \
+            "${{ matrix.test-plugin }}" \
             pytest-cov \
             "hypothesis>=6.119,<7"
       - name: Run tests with coverage gate
